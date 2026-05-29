@@ -4,6 +4,7 @@ pub mod primary;
 pub mod scale;
 
 use crate::model::{Mode, Monitor, MonitorConfig};
+use tracing::warn;
 
 /// Plan configurations for the given monitors. The ordering rule:
 /// internal panel (eDP/LVDS/DSI) first if present and active, then
@@ -23,10 +24,16 @@ pub fn plan(monitors: &[Monitor]) -> Vec<MonitorConfig> {
     let prepared: Vec<(String, Mode, f64)> = sorted
         .iter()
         .map(|m| {
-            let chosen_mode = mode::pick_best_mode(&m.available_modes).unwrap_or(Mode {
-                width: m.width_px,
-                height: m.height_px,
-                refresh_hz: 60.0,
+            let chosen_mode = mode::pick_best_mode(&m.available_modes).unwrap_or_else(|| {
+                warn!(
+                    "monitor {}: no available modes reported, falling back to current resolution",
+                    m.name
+                );
+                Mode {
+                    width: m.width_px,
+                    height: m.height_px,
+                    refresh_hz: 60.0,
+                }
             });
             let s = scale::pick_scale(m);
             (m.name.clone(), chosen_mode, s)
@@ -35,8 +42,7 @@ pub fn plan(monitors: &[Monitor]) -> Vec<MonitorConfig> {
 
     let layout_inputs: Vec<layout::LayoutInput> = prepared
         .iter()
-        .map(|(name, mode, scale)| layout::LayoutInput {
-            name: name.clone(),
+        .map(|(_name, mode, scale)| layout::LayoutInput {
             mode: mode.clone(),
             scale: *scale,
         })

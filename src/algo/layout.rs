@@ -1,8 +1,6 @@
 use crate::model::Mode;
 
-#[allow(dead_code)]
 pub struct LayoutInput {
-    pub name: String,
     pub mode: Mode,
     pub scale: f64,
 }
@@ -24,9 +22,8 @@ pub fn arrange(inputs: &[LayoutInput]) -> Vec<(i32, i32)> {
 mod tests {
     use super::*;
 
-    fn li(name: &str, w: u32, h: u32, scale: f64) -> LayoutInput {
+    fn li(_name: &str, w: u32, h: u32, scale: f64) -> LayoutInput {
         LayoutInput {
-            name: name.to_string(),
             mode: Mode { width: w, height: h, refresh_hz: 60.0 },
             scale,
         }
