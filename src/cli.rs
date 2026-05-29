@@ -45,7 +45,7 @@ fn init_tracing(verbose: bool) {
 
 async fn list() -> Result<()> {
     let monitors = crate::hypr::query_monitors().await?;
-    let plan = crate::algo::plan(&monitors);
+    let plan = hyprmonitor::algo::plan(&monitors);
 
     println!("Detected monitors:");
     for m in &monitors {
@@ -68,7 +68,7 @@ async fn list() -> Result<()> {
 
 async fn apply(dry_run: bool) -> Result<()> {
     let monitors = crate::hypr::query_monitors().await?;
-    let plan = crate::algo::plan(&monitors);
+    let plan = hyprmonitor::algo::plan(&monitors);
 
     if dry_run {
         for cfg in &plan {

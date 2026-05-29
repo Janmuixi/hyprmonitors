@@ -1,4 +1,4 @@
-use crate::model::{Mode, Monitor, MonitorConfig};
+use hyprmonitor::model::{Mode, Monitor, MonitorConfig};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::fs;
@@ -83,7 +83,7 @@ fn read_edid_for_connector(connector: &str) -> Option<(u32, u32)> {
             if rest.1 == connector {
                 let edid_path = entry.path().join("edid");
                 if let Ok(bytes) = fs::read(&edid_path) {
-                    return crate::algo::scale::parse_edid_dimensions(&bytes);
+                    return hyprmonitor::algo::scale::parse_edid_dimensions(&bytes);
                 }
             }
         }

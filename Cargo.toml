@@ -14,3 +14,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "1"
 regex = "1"
 anyhow = "1"
+
+[lib]
+name = "hyprmonitor"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hyprmonitor"
+path = "src/main.rs"

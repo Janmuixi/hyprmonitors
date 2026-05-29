@@ -1,0 +1,16 @@
+[
+  {
+    "id": 0,
+    "name": "eDP-1",
+    "width": 1920,
+    "height": 1080,
+    "availableModes": ["1920x1080@60.000Hz"]
+  },
+  {
+    "id": 1,
+    "name": "DP-1",
+    "width": 2560,
+    "height": 1440,
+    "availableModes": ["2560x1440@60.000Hz", "2560x1440@165.000Hz"]
+  }
+]

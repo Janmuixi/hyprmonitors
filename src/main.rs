@@ -1,8 +1,6 @@
-mod algo;
 mod cli;
 mod daemon;
 mod hypr;
-mod model;
 mod notify;
 
 use anyhow::Result;

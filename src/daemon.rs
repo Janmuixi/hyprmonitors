@@ -3,7 +3,7 @@ use hyprland::event_listener::AsyncEventListener;
 use std::sync::Arc;
 use tokio::sync::Notify;
 use tracing::{error, info};
-use crate::model::{Monitor, MonitorConfig};
+use hyprmonitor::model::{Monitor, MonitorConfig};
 
 pub async fn run() -> Result<()> {
     info!("hyprmonitor daemon starting");
@@ -82,7 +82,7 @@ async fn reconfigure() {
             return;
         }
     };
-    let plan = crate::algo::plan(&monitors);
+    let plan = hyprmonitor::algo::plan(&monitors);
     info!("applying {} monitor configs", plan.len());
     for cfg in &plan {
         if let Err(e) = crate::hypr::apply(cfg).await {
