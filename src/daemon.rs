@@ -3,6 +3,7 @@ use hyprland::event_listener::AsyncEventListener;
 use std::sync::Arc;
 use tokio::sync::Notify;
 use tracing::{error, info};
+use crate::model::{Monitor, MonitorConfig};
 
 pub async fn run() -> Result<()> {
     info!("hyprmonitor daemon starting");
@@ -92,4 +93,41 @@ async fn reconfigure() {
             ));
         }
     }
+    verify_applied(&plan).await;
+}
+
+async fn verify_applied(plan: &[MonitorConfig]) {
+    let after = match crate::hypr::query_monitors().await {
+        Ok(m) => m,
+        Err(e) => {
+            error!("verify: failed to re-query monitors: {:?}", e);
+            return;
+        }
+    };
+    for cfg in plan {
+        let Some(actual) = after.iter().find(|m| m.name == cfg.name) else {
+            crate::notify::notify_failure(&format!(
+                "{} disappeared after apply",
+                cfg.name
+            ));
+            continue;
+        };
+        if !mode_matches(actual, cfg) {
+            crate::notify::notify_failure(&format!(
+                "{}: requested {}x{}@{} but got {}x{}",
+                cfg.name,
+                cfg.mode.width,
+                cfg.mode.height,
+                cfg.mode.refresh_hz,
+                actual.width_px,
+                actual.height_px,
+            ));
+        }
+    }
+}
+
+fn mode_matches(actual: &Monitor, cfg: &MonitorConfig) -> bool {
+    // Our Monitor type only carries current resolution, not refresh rate.
+    // Width/height mismatch is what we can detect reliably.
+    actual.width_px == cfg.mode.width && actual.height_px == cfg.mode.height
 }
