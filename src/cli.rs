@@ -36,10 +36,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             info!("apply (dry_run={}) not yet implemented", dry_run);
             Ok(())
         }
-        Command::List => {
-            info!("list not yet implemented");
-            Ok(())
-        }
+        Command::List => list().await,
     }
 }
 
@@ -51,4 +48,27 @@ fn init_tracing(verbose: bool) {
         .with_env_filter(filter)
         .with_writer(std::io::stderr)
         .init();
+}
+
+async fn list() -> Result<()> {
+    let monitors = crate::hypr::query_monitors().await?;
+    let plan = crate::algo::plan(&monitors);
+
+    println!("Detected monitors:");
+    for m in &monitors {
+        println!(
+            "  {} {}x{} physical_mm={:?} modes={}",
+            m.name,
+            m.width_px,
+            m.height_px,
+            m.physical_mm,
+            m.available_modes.len()
+        );
+    }
+    println!();
+    println!("Plan:");
+    for cfg in &plan {
+        println!("  monitor = {}", cfg);
+    }
+    Ok(())
 }
