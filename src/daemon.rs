@@ -38,6 +38,15 @@ pub async fn run() -> Result<()> {
     tokio::spawn(async move {
         loop {
             reactor_trigger.notified().await;
+            // Coalesce additional events arriving within 200ms.
+            loop {
+                let sleep = tokio::time::sleep(std::time::Duration::from_millis(200));
+                tokio::pin!(sleep);
+                tokio::select! {
+                    _ = &mut sleep => break,
+                    _ = reactor_trigger.notified() => continue,
+                }
+            }
             reconfigure().await;
         }
     });
