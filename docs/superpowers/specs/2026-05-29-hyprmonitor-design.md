@@ -120,7 +120,7 @@ dpi             = diagonal_px / diagonal_inches
 | 170 – 219   | 1.75  |
 | ≥ 220       | 2.0   |
 
-**EDID unreadable.** Fall back to scale `1.0`, log a warning. No notification — common on virtual displays and would be spammy.
+**EDID unreadable or reports zero dimensions.** Some virtual displays (KVMs, screen-sharing tools) and projectors return zeroed physical size. Treated identically to "unreadable": fall back to scale `1.0`, log a warning. No notification — common and would be spammy.
 
 **Hyprland's non-integer-scale warning.** Hyprland warns when `width_px / scale` isn't an integer. We accept that warning for v1 rather than snap to nearest "valid" scale; it's a log line in Hyprland, not a failure.
 
@@ -153,7 +153,7 @@ reconfigure():
 | Situation | Behavior |
 |---|---|
 | `hyprctl keyword` returns non-zero | Log error, `notify-send` with monitor name + chosen mode, continue (do not crash daemon) |
-| `hyprctl keyword` returns 0 but chosen mode wasn't applied | Re-query monitors after apply; if active mode ≠ requested mode → `notify-send` "DP-2: requested 2560x1440@165Hz but got 1920x1080@60Hz" |
+| `hyprctl keyword` returns 0 but chosen mode wasn't applied | Re-query monitors after apply; compare `(width, height)` exactly and refresh rate within ±0.01Hz; on mismatch → `notify-send` "DP-2: requested 2560x1440@165Hz but got 1920x1080@60Hz" |
 | EDID unreadable | Fall back to scale 1.0, log warning, no notification |
 | `availableModes` empty | Use `preferred,auto,1.0`, log warning, no notification |
 | Hyprland event socket disconnects | Exponential-backoff retry, no notification |
