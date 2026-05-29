@@ -43,12 +43,19 @@ pub async fn query_monitors() -> Result<Vec<Monitor>> {
     let mut monitors = Vec::new();
     for hm in raw {
         let available_modes = parse_available_modes(&hm.available_modes);
-        let physical_mm = read_edid_for_connector(&hm.name);
+        let edid = read_edid_for_connector(&hm.name);
+        let physical_mm = edid
+            .as_deref()
+            .and_then(hyprmonitor::algo::scale::parse_edid_dimensions);
+        let preferred_mode = edid
+            .as_deref()
+            .and_then(hyprmonitor::algo::scale::parse_edid_preferred_mode);
         monitors.push(Monitor {
             name: hm.name,
             width_px: hm.width,
             height_px: hm.height,
             physical_mm,
+            preferred_mode,
             available_modes,
         });
     }
@@ -72,7 +79,7 @@ fn parse_mode_string(s: &str) -> Option<Mode> {
     Some(Mode { width, height, refresh_hz })
 }
 
-fn read_edid_for_connector(connector: &str) -> Option<(u32, u32)> {
+fn read_edid_for_connector(connector: &str) -> Option<Vec<u8>> {
     // /sys/class/drm/card?-<connector>/edid
     let drm = PathBuf::from("/sys/class/drm");
     let entries = fs::read_dir(&drm).ok()?;
@@ -83,7 +90,9 @@ fn read_edid_for_connector(connector: &str) -> Option<(u32, u32)> {
             if rest.1 == connector {
                 let edid_path = entry.path().join("edid");
                 if let Ok(bytes) = fs::read(&edid_path) {
-                    return hyprmonitor::algo::scale::parse_edid_dimensions(&bytes);
+                    if !bytes.is_empty() {
+                        return Some(bytes);
+                    }
                 }
             }
         }

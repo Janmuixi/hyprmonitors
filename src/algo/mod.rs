@@ -24,7 +24,7 @@ pub fn plan(monitors: &[Monitor]) -> Vec<MonitorConfig> {
     let prepared: Vec<(String, Mode, f64)> = sorted
         .iter()
         .map(|m| {
-            let chosen_mode = mode::pick_best_mode(&m.available_modes).unwrap_or_else(|| {
+            let chosen_mode = mode::pick_best_mode(&m.available_modes, m.preferred_mode).unwrap_or_else(|| {
                 warn!(
                     "monitor {}: no available modes reported, falling back to current resolution",
                     m.name
@@ -35,7 +35,7 @@ pub fn plan(monitors: &[Monitor]) -> Vec<MonitorConfig> {
                     refresh_hz: 60.0,
                 }
             });
-            let s = scale::pick_scale(m);
+            let s = scale::pick_scale(chosen_mode.width, chosen_mode.height, m.physical_mm);
             (m.name.clone(), chosen_mode, s)
         })
         .collect();
@@ -76,6 +76,7 @@ mod tests {
             width_px: w,
             height_px: h,
             physical_mm: mm,
+            preferred_mode: None,
             available_modes: modes,
         }
     }
@@ -148,5 +149,25 @@ mod tests {
         // Falls back to current width_px x height_px @ 60Hz (placeholder)
         assert_eq!(result[0].mode.width, 1920);
         assert_eq!(result[0].mode.height, 1080);
+    }
+
+    #[test]
+    fn preferred_mode_beats_advertised_max_pixels() {
+        // 1080p panel that advertises a fake 4K mode. EDID's preferred timing
+        // says 1920x1080 is native — we should pick that, at its max Hz.
+        let mut monitor = mon(
+            "HDMI-A-1",
+            1920,
+            1080,
+            None,
+            vec![
+                mode(3840, 2160, 30.0),
+                mode(1920, 1080, 60.0),
+                mode(1920, 1080, 75.0),
+            ],
+        );
+        monitor.preferred_mode = Some((1920, 1080));
+        let result = plan(&[monitor]);
+        assert_eq!(result[0].mode, mode(1920, 1080, 75.0));
     }
 }

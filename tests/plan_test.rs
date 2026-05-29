@@ -22,6 +22,7 @@ fn load(path: &str) -> Vec<Monitor> {
             width_px: f.width,
             height_px: f.height,
             physical_mm: None, // fixtures don't carry EDID
+            preferred_mode: None,
             available_modes: f
                 .available_modes
                 .into_iter()

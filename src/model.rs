@@ -11,6 +11,7 @@ pub struct Monitor {
     pub width_px: u32,
     pub height_px: u32,
     pub physical_mm: Option<(u32, u32)>,
+    pub preferred_mode: Option<(u32, u32)>,
     pub available_modes: Vec<Mode>,
 }
 
