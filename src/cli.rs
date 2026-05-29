@@ -1,6 +1,5 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use tracing::info;
 
 #[derive(Parser, Debug)]
 #[command(name = "hyprmonitor", version, about = "Auto-configure Hyprland monitors")]
@@ -28,10 +27,7 @@ pub enum Command {
 pub async fn run(cli: Cli) -> Result<()> {
     init_tracing(cli.verbose);
     match cli.command {
-        Command::Daemon => {
-            info!("daemon mode not yet implemented");
-            Ok(())
-        }
+        Command::Daemon => crate::daemon::run().await,
         Command::Apply { dry_run } => apply(dry_run).await,
         Command::List => list().await,
     }
