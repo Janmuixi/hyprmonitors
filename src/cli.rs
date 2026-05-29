@@ -32,10 +32,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             info!("daemon mode not yet implemented");
             Ok(())
         }
-        Command::Apply { dry_run } => {
-            info!("apply (dry_run={}) not yet implemented", dry_run);
-            Ok(())
-        }
+        Command::Apply { dry_run } => apply(dry_run).await,
         Command::List => list().await,
     }
 }
@@ -69,6 +66,30 @@ async fn list() -> Result<()> {
     println!("Plan:");
     for cfg in &plan {
         println!("  monitor = {}", cfg);
+    }
+    Ok(())
+}
+
+async fn apply(dry_run: bool) -> Result<()> {
+    let monitors = crate::hypr::query_monitors().await?;
+    let plan = crate::algo::plan(&monitors);
+
+    if dry_run {
+        for cfg in &plan {
+            println!("hyprctl keyword monitor {}", cfg);
+        }
+        return Ok(());
+    }
+
+    for cfg in &plan {
+        tracing::info!("applying {}", cfg);
+        if let Err(e) = crate::hypr::apply(cfg).await {
+            tracing::error!("apply failed for {}: {:?}", cfg.name, e);
+            crate::notify::notify_failure(&format!(
+                "Failed to configure {}: {}",
+                cfg.name, e
+            ));
+        }
     }
     Ok(())
 }
