@@ -1,42 +1,58 @@
 use crate::model::{Mode, Monitor, MonitorConfig};
 use anyhow::{Context, Result};
-use hyprland::prelude::HyprData;
+use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
+use tokio::process::Command;
+
+/// Private struct matching the JSON shape emitted by `hyprctl monitors -j`.
+/// Only the fields we need are declared; serde ignores the rest.
+#[derive(Deserialize)]
+struct HyprctlMonitor {
+    name: String,
+    width: u32,
+    height: u32,
+    #[serde(rename = "availableModes")]
+    available_modes: Vec<String>,
+}
 
 /// Read all currently-connected monitors from Hyprland, enriched with
 /// EDID-derived physical dimensions.
+///
+/// Uses `hyprctl monitors -j` so we get the full `availableModes` list that
+/// the `hyprland` crate v0.4.0-beta.3 does not expose.
 pub async fn query_monitors() -> Result<Vec<Monitor>> {
-    let hypr_monitors = hyprland::data::Monitors::get_async()
+    let output = Command::new("hyprctl")
+        .args(["monitors", "-j"])
+        .output()
         .await
-        .context("hyprland::Monitors::get_async")?;
+        .context("hyprctl monitors -j")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "hyprctl monitors -j exited with {}: {}",
+            output.status,
+            stderr.trim()
+        );
+    }
+
+    let raw: Vec<HyprctlMonitor> = serde_json::from_slice(&output.stdout)
+        .context("hyprctl monitors -j")?;
 
     let mut monitors = Vec::new();
-    for hm in hypr_monitors.iter() {
-        monitors.push(convert(hm));
+    for hm in raw {
+        let available_modes = parse_available_modes(&hm.available_modes);
+        let physical_mm = read_edid_for_connector(&hm.name);
+        monitors.push(Monitor {
+            name: hm.name,
+            width_px: hm.width,
+            height_px: hm.height,
+            physical_mm,
+            available_modes,
+        });
     }
     Ok(monitors)
-}
-
-fn convert(hm: &hyprland::data::Monitor) -> Monitor {
-    // The hyprland crate v0.4.0-beta.3 Monitor struct does not expose an
-    // available_modes field; we synthesise a single-entry list from the
-    // monitor's current active mode so the rest of the pipeline has something
-    // to work with.
-    let current_mode = Mode {
-        width: hm.width as u32,
-        height: hm.height as u32,
-        refresh_hz: hm.refresh_rate as f64,
-    };
-    let physical_mm = read_edid_for_connector(&hm.name);
-
-    Monitor {
-        name: hm.name.clone(),
-        width_px: hm.width as u32,
-        height_px: hm.height as u32,
-        physical_mm,
-        available_modes: vec![current_mode],
-    }
 }
 
 fn parse_available_modes(raw: &[String]) -> Vec<Mode> {
