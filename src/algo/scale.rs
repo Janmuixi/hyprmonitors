@@ -1,3 +1,17 @@
+use crate::model::Monitor;
+
+/// Decide the scale for a monitor. Returns 1.0 if physical_mm is None,
+/// width_mm/height_mm is zero, or DPI can't be computed.
+pub fn pick_scale(monitor: &Monitor) -> f64 {
+    let Some((w_mm, h_mm)) = monitor.physical_mm else {
+        return 1.0;
+    };
+    let Some(dpi) = compute_dpi(monitor.width_px, monitor.height_px, w_mm, h_mm) else {
+        return 1.0;
+    };
+    pick_scale_from_dpi(dpi)
+}
+
 /// Parse maximum image size (cm) from EDID block at bytes 0x15-0x16,
 /// returning (width_mm, height_mm). Returns None if header is invalid
 /// or either dimension is zero.
@@ -49,6 +63,17 @@ pub fn pick_scale_from_dpi(dpi: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{Mode, Monitor};
+
+    fn mon(name: &str, w_px: u32, h_px: u32, mm: Option<(u32, u32)>) -> Monitor {
+        Monitor {
+            name: name.to_string(),
+            width_px: w_px,
+            height_px: h_px,
+            physical_mm: mm,
+            available_modes: vec![Mode { width: w_px, height: h_px, refresh_hz: 60.0 }],
+        }
+    }
 
     fn edid_with_dims(w_cm: u8, h_cm: u8) -> Vec<u8> {
         let mut bytes = vec![0u8; 128];
@@ -132,5 +157,22 @@ mod tests {
         assert_eq!(pick_scale_from_dpi(219.9), 1.75);
         assert_eq!(pick_scale_from_dpi(220.0), 2.0);
         assert_eq!(pick_scale_from_dpi(300.0), 2.0);
+    }
+
+    #[test]
+    fn scale_no_edid_falls_back_to_1() {
+        assert_eq!(pick_scale(&mon("DP-1", 1920, 1080, None)), 1.0);
+    }
+
+    #[test]
+    fn scale_24_inch_1080p_is_1() {
+        // 530mm x 300mm ~ 24"
+        assert_eq!(pick_scale(&mon("DP-1", 1920, 1080, Some((530, 300)))), 1.0);
+    }
+
+    #[test]
+    fn scale_13_inch_4k_is_2() {
+        // 286mm x 179mm ~ 13.3" with 3840x2400 ≈ 339 DPI
+        assert_eq!(pick_scale(&mon("eDP-1", 3840, 2400, Some((286, 179)))), 2.0);
     }
 }
