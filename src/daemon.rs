@@ -10,35 +10,11 @@ pub async fn run() -> Result<()> {
 
     let trigger = Arc::new(Notify::new());
 
-    let trigger_added = trigger.clone();
-    let trigger_removed = trigger.clone();
-
-    let mut listener = AsyncEventListener::new();
-
-    // MonitorAdded delivers MonitorAddedEventData { id, name, description }
-    listener.add_monitor_added_handler(move |data| {
-        let t = trigger_added.clone();
-        Box::pin(async move {
-            info!("monitor added: {} ({})", data.name, data.description);
-            t.notify_one();
-        })
-    });
-
-    // MonitorRemoved delivers a String (the monitor name)
-    listener.add_monitor_removed_handler(move |name| {
-        let t = trigger_removed.clone();
-        Box::pin(async move {
-            info!("monitor removed: {}", name);
-            t.notify_one();
-        })
-    });
-
-    // Spawn a task that reacts to events.
+    // Reactor task — debounced reconfigure on each notification.
     let reactor_trigger = trigger.clone();
     tokio::spawn(async move {
         loop {
             reactor_trigger.notified().await;
-            // Coalesce additional events arriving within 200ms.
             loop {
                 let sleep = tokio::time::sleep(std::time::Duration::from_millis(200));
                 tokio::pin!(sleep);
@@ -51,9 +27,49 @@ pub async fn run() -> Result<()> {
         }
     });
 
-    info!("subscribing to hyprland events");
-    listener.start_listener_async().await?;
-    Ok(())
+    // Listener task — reconnect with exponential backoff.
+    let mut backoff_secs: u64 = 1;
+    loop {
+        let trigger_added = trigger.clone();
+        let trigger_removed = trigger.clone();
+
+        let mut listener = AsyncEventListener::new();
+        listener.add_monitor_added_handler(move |data| {
+            let t = trigger_added.clone();
+            Box::pin(async move {
+                info!("monitor added: {}", data.name);
+                t.notify_one();
+            })
+        });
+        listener.add_monitor_removed_handler(move |name| {
+            let t = trigger_removed.clone();
+            Box::pin(async move {
+                info!("monitor removed: {}", name);
+                t.notify_one();
+            })
+        });
+
+        info!("subscribing to hyprland events");
+        match listener.start_listener_async().await {
+            Ok(()) => {
+                info!("event listener exited cleanly; reconnecting");
+                backoff_secs = 1;
+            }
+            Err(e) => {
+                error!(
+                    "event listener error: {:?}; retrying in {}s",
+                    e, backoff_secs
+                );
+                tokio::time::sleep(std::time::Duration::from_secs(backoff_secs)).await;
+                backoff_secs = (backoff_secs * 2).min(30);
+                continue;
+            }
+        }
+
+        // Listener exited cleanly. Try to reconnect immediately, and run
+        // a reconfigure pass since Hyprland may have just restarted.
+        reconfigure().await;
+    }
 }
 
 async fn reconfigure() {
