@@ -2,6 +2,8 @@ mod app;
 mod canvas;
 mod inspector;
 mod save;
+#[cfg(test)]
+mod tests;
 
 use anyhow::Result;
 use app::App;
