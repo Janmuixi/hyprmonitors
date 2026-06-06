@@ -82,7 +82,9 @@ async fn reconfigure() {
             return;
         }
     };
-    let plan = hyprmonitor::algo::plan(&monitors);
+    let mut plan = hyprmonitor::algo::plan(&monitors);
+    let cfg = hyprmonitor::config::load_or_default(&config_path());
+    hyprmonitor::config::merge_into_plan(&mut plan, &monitors, &cfg);
     info!("applying {} monitor configs", plan.len());
     for cfg in &plan {
         if let Err(e) = crate::hypr::apply(cfg).await {
@@ -130,4 +132,15 @@ fn mode_matches(actual: &Monitor, cfg: &MonitorConfig) -> bool {
     // Our Monitor type only carries current resolution, not refresh rate.
     // Width/height mismatch is what we can detect reliably.
     actual.width_px == cfg.mode.width && actual.height_px == cfg.mode.height
+}
+
+fn config_path() -> std::path::PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        std::path::PathBuf::from(home)
+            .join(".config")
+            .join("hyprmonitor")
+            .join("monitors.json")
+    } else {
+        std::path::PathBuf::from(".config/hyprmonitor/monitors.json")
+    }
 }
