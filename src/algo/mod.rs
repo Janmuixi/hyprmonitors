@@ -77,6 +77,7 @@ mod tests {
             height_px: h,
             physical_mm: mm,
             preferred_mode: None,
+            edid_id: None,
             available_modes: modes,
         }
     }

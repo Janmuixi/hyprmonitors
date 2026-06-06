@@ -50,12 +50,16 @@ pub async fn query_monitors() -> Result<Vec<Monitor>> {
         let preferred_mode = edid
             .as_deref()
             .and_then(hyprmonitor::algo::scale::parse_edid_preferred_mode);
+        let edid_id = edid
+            .as_deref()
+            .and_then(hyprmonitor::algo::scale::derive_edid_id);
         monitors.push(Monitor {
             name: hm.name,
             width_px: hm.width,
             height_px: hm.height,
             physical_mm,
             preferred_mode,
+            edid_id,
             available_modes,
         });
     }
