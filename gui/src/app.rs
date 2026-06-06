@@ -119,6 +119,12 @@ impl eframe::App for App {
                 ));
             });
         });
+        egui::Panel::bottom("inspector")
+            .resizable(false)
+            .min_size(80.0)
+            .show_inside(ui, |ui| {
+                crate::inspector::render(ui, self);
+            });
         egui::CentralPanel::default().show_inside(ui, |ui| {
             crate::canvas::render(ui, self);
         });

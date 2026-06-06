@@ -1,5 +1,6 @@
 mod app;
 mod canvas;
+mod inspector;
 
 use anyhow::Result;
 use app::App;

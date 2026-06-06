@@ -41,38 +41,55 @@ pub fn world_bounds(monitors: &[EditableMonitor]) -> egui::Rect {
     )
 }
 
-/// Render the canvas (rectangles + labels only — no interaction yet).
+/// Render the canvas with click-to-select interaction.
 pub fn render(ui: &mut egui::Ui, app: &mut App) {
     let bounds = world_bounds(&app.monitors);
     let canvas_rect = ui.available_rect_before_wrap();
 
-    // Auto-fit on first frame.
     if app.canvas_scale <= 0.0 {
         let sx = (canvas_rect.width() - 40.0) / bounds.width().max(1.0);
         let sy = (canvas_rect.height() - 40.0) / bounds.height().max(1.0);
         app.canvas_scale = sx.min(sy).max(0.01);
     }
 
-    let painter = ui.painter_at(canvas_rect);
-    let bcenter = bounds.center();
-    let scale = app.canvas_scale;
-    let to_screen = |wx: f32, wy: f32| -> egui::Pos2 {
+    let to_screen = |wx: f32, wy: f32, scale: f32, center: egui::Pos2| -> egui::Pos2 {
         egui::pos2(
-            canvas_rect.center().x + (wx - bcenter.x) * scale,
-            canvas_rect.center().y + (wy - bcenter.y) * scale,
+            canvas_rect.center().x + (wx - center.x) * scale,
+            canvas_rect.center().y + (wy - center.y) * scale,
         )
     };
 
+    let painter = ui.painter_at(canvas_rect);
     painter.rect_filled(canvas_rect, 0.0, egui::Color32::from_gray(28));
+
+    let bg_id = ui.id().with("bg");
+    let bg_response = ui.interact(canvas_rect, bg_id, egui::Sense::click());
+    if bg_response.clicked() {
+        app.selected = None;
+    }
+
+    let bcenter = bounds.center();
+    let scale = app.canvas_scale;
+    let mut click_target: Option<usize> = None;
 
     for (i, m) in app.monitors.iter().enumerate() {
         if m.disabled {
             continue;
         }
         let (w, h) = footprint(m);
-        let top_left = to_screen(m.position.0 as f32, m.position.1 as f32);
-        let bottom_right = to_screen(m.position.0 as f32 + w, m.position.1 as f32 + h);
+        let top_left = to_screen(m.position.0 as f32, m.position.1 as f32, scale, bcenter);
+        let bottom_right = to_screen(
+            m.position.0 as f32 + w,
+            m.position.1 as f32 + h,
+            scale,
+            bcenter,
+        );
         let rect = egui::Rect::from_two_pos(top_left, bottom_right);
+
+        let response = ui.interact(rect, ui.id().with(("monitor", i)), egui::Sense::click());
+        if response.clicked() {
+            click_target = Some(i);
+        }
 
         let selected = app.selected == Some(i);
         let fill = if selected {
@@ -81,7 +98,6 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
             egui::Color32::from_rgb(70, 70, 80)
         };
         painter.rect_filled(rect, 4.0, fill);
-        // egui 0.34: rect_stroke requires StrokeKind as 4th argument
         painter.rect_stroke(
             rect,
             4.0,
@@ -106,5 +122,9 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
             egui::TextStyle::Body.resolve(ui.style()),
             egui::Color32::WHITE,
         );
+    }
+
+    if let Some(i) = click_target {
+        app.selected = Some(i);
     }
 }
