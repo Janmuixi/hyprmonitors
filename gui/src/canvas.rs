@@ -161,9 +161,25 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
     }
 }
 
-const SNAP_PX: i32 = 20;
+const SNAP_PX_DRAG: i32 = 20;
+const SNAP_PX_ALIGN: i32 = 200;
+
+/// Snap every monitor's edges to its neighbours within a generous threshold.
+/// Processes left-to-right so later monitors see snapped earlier ones, which
+/// lets a chain of small gaps collapse in a single pass.
+pub(crate) fn align_all(monitors: &mut Vec<crate::app::EditableMonitor>) {
+    let mut order: Vec<usize> = (0..monitors.len()).collect();
+    order.sort_by_key(|&i| monitors[i].position.0);
+    for i in order {
+        apply_snap_with(monitors, i, SNAP_PX_ALIGN);
+    }
+}
 
 fn apply_snap(monitors: &mut Vec<crate::app::EditableMonitor>, idx: usize) {
+    apply_snap_with(monitors, idx, SNAP_PX_DRAG);
+}
+
+fn apply_snap_with(monitors: &mut Vec<crate::app::EditableMonitor>, idx: usize, snap_px: i32) {
     let me = monitors[idx].clone();
     let (me_w, me_h) = footprint(&me);
     let me_left = me.position.0 as f32;
@@ -191,7 +207,7 @@ fn apply_snap(monitors: &mut Vec<crate::app::EditableMonitor>, idx: usize) {
             (me_right, o_right),
         ] {
             let dx = (b - a).round() as i32;
-            if dx.abs() <= SNAP_PX && best_dx.map_or(true, |bd| dx.abs() < bd.abs()) {
+            if dx.abs() <= snap_px && best_dx.map_or(true, |bd| dx.abs() < bd.abs()) {
                 best_dx = Some(dx);
             }
         }
@@ -202,7 +218,7 @@ fn apply_snap(monitors: &mut Vec<crate::app::EditableMonitor>, idx: usize) {
             (me_bottom, o_bottom),
         ] {
             let dy = (b - a).round() as i32;
-            if dy.abs() <= SNAP_PX && best_dy.map_or(true, |bd| dy.abs() < bd.abs()) {
+            if dy.abs() <= snap_px && best_dy.map_or(true, |bd| dy.abs() < bd.abs()) {
                 best_dy = Some(dy);
             }
         }

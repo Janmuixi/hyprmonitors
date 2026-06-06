@@ -69,7 +69,8 @@ pub fn config_path() -> PathBuf {
     }
 }
 
-pub fn save_and_apply(app: &App) -> Result<()> {
+pub fn save_and_apply(app: &mut App) -> Result<()> {
+    crate::canvas::align_all(&mut app.monitors);
     validate(&app.monitors)?;
     let cfg = app.to_config();
     let path = config_path();
