@@ -95,8 +95,8 @@ impl App {
     }
 }
 
-async fn reload_monitors() -> anyhow::Result<(Vec<hyprmonitor::model::Monitor>, hyprmonitor::config::Config)> {
-    let monitors = crate::query_hyprctl_monitors().await?;
+fn reload_monitors() -> anyhow::Result<(Vec<hyprmonitor::model::Monitor>, hyprmonitor::config::Config)> {
+    let monitors = crate::query_hyprctl_monitors_sync()?;
     let cfg = hyprmonitor::config::load_or_default(&crate::save::config_path());
     Ok((monitors, cfg))
 }
@@ -209,7 +209,7 @@ impl eframe::App for App {
         // would otherwise work via input state, but the buttons themselves only
         // emit a click during the panel render.)
         if save_requested {
-            match tokio::runtime::Handle::current().block_on(crate::save::save_and_apply(self)) {
+            match crate::save::save_and_apply(self) {
                 Ok(()) => {
                     self.dirty = false;
                     self.last_error = Some("Saved \u{2713}".to_string());
@@ -220,7 +220,7 @@ impl eframe::App for App {
             }
         }
         if reload_requested {
-            match tokio::runtime::Handle::current().block_on(reload_monitors()) {
+            match reload_monitors() {
                 Ok((monitors, cfg)) => {
                     self.load(&monitors, &cfg);
                     self.last_error = Some("Reloaded \u{2713}".to_string());
@@ -229,7 +229,7 @@ impl eframe::App for App {
             }
         }
         if reset_requested {
-            match tokio::runtime::Handle::current().block_on(reload_monitors()) {
+            match reload_monitors() {
                 Ok((monitors, _cfg)) => {
                     let empty = hyprmonitor::config::Config::default();
                     self.load(&monitors, &empty);

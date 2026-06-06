@@ -69,7 +69,7 @@ pub fn config_path() -> PathBuf {
     }
 }
 
-pub async fn save_and_apply(app: &App) -> Result<()> {
+pub fn save_and_apply(app: &App) -> Result<()> {
     validate(&app.monitors)?;
     let cfg = app.to_config();
     let path = config_path();
@@ -83,10 +83,9 @@ pub async fn save_and_apply(app: &App) -> Result<()> {
             rotation: m.rotation,
         };
         let arg = cfg_entry.to_string();
-        let output = tokio::process::Command::new("hyprctl")
+        let output = std::process::Command::new("hyprctl")
             .args(["keyword", "monitor", &arg])
-            .output()
-            .await?;
+            .output()?;
         if !output.status.success() {
             return Err(anyhow!(
                 "hyprctl keyword monitor {}: {}",

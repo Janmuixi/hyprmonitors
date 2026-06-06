@@ -9,8 +9,7 @@ use anyhow::Result;
 use app::App;
 use hyprmonitor::config;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -19,7 +18,7 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    let monitors = query_hyprctl_monitors().await?;
+    let monitors = query_hyprctl_monitors_sync()?;
     let cfg = config::load_or_default(&config_path());
 
     let mut app = App::new();
@@ -39,13 +38,10 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-pub(crate) async fn query_hyprctl_monitors() -> Result<Vec<hyprmonitor::model::Monitor>> {
-    // The lib's hypr.rs lives in the bin crate, not the library, so we
-    // shell out to `hyprctl` directly and reuse the same JSON shape.
-    let output = tokio::process::Command::new("hyprctl")
+pub(crate) fn query_hyprctl_monitors_sync() -> Result<Vec<hyprmonitor::model::Monitor>> {
+    let output = std::process::Command::new("hyprctl")
         .args(["monitors", "-j"])
-        .output()
-        .await?;
+        .output()?;
     if !output.status.success() {
         anyhow::bail!("hyprctl monitors -j: {}", String::from_utf8_lossy(&output.stderr));
     }
