@@ -41,7 +41,7 @@ pub fn world_bounds(monitors: &[EditableMonitor]) -> egui::Rect {
     )
 }
 
-/// Render the canvas with click-to-select interaction.
+/// Render the canvas with click-to-select and drag-to-reposition interaction.
 pub fn render(ui: &mut egui::Ui, app: &mut App) {
     let bounds = world_bounds(&app.monitors);
     let canvas_rect = ui.available_rect_before_wrap();
@@ -71,45 +71,67 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
     let bcenter = bounds.center();
     let scale = app.canvas_scale;
     let mut click_target: Option<usize> = None;
+    let mut drag_target: Option<(usize, egui::Vec2)> = None;
 
-    for (i, m) in app.monitors.iter().enumerate() {
-        if m.disabled {
-            continue;
-        }
-        let (w, h) = footprint(m);
-        let top_left = to_screen(m.position.0 as f32, m.position.1 as f32, scale, bcenter);
-        let bottom_right = to_screen(
-            m.position.0 as f32 + w,
-            m.position.1 as f32 + h,
-            scale,
-            bcenter,
+    // First pass: snapshot the rectangles for interaction + drawing.
+    let snapshot: Vec<(usize, egui::Rect, bool)> = app
+        .monitors
+        .iter()
+        .enumerate()
+        .filter_map(|(i, m)| {
+            if m.disabled {
+                return None;
+            }
+            let (w, h) = footprint(m);
+            let top_left = to_screen(m.position.0 as f32, m.position.1 as f32, scale, bcenter);
+            let bottom_right = to_screen(
+                m.position.0 as f32 + w,
+                m.position.1 as f32 + h,
+                scale,
+                bcenter,
+            );
+            let rect = egui::Rect::from_two_pos(top_left, bottom_right);
+            let internal = hyprmonitor::algo::primary::is_internal(&m.connector_hint);
+            Some((i, rect, internal))
+        })
+        .collect();
+
+    // Second pass: register interactions on each snapshot rect.
+    for (i, rect, _internal) in &snapshot {
+        let response = ui.interact(
+            *rect,
+            ui.id().with(("monitor", *i)),
+            egui::Sense::click_and_drag(),
         );
-        let rect = egui::Rect::from_two_pos(top_left, bottom_right);
-
-        let response = ui.interact(rect, ui.id().with(("monitor", i)), egui::Sense::click());
         if response.clicked() {
-            click_target = Some(i);
+            click_target = Some(*i);
         }
+        if response.dragged() {
+            click_target = Some(*i);
+            drag_target = Some((*i, response.drag_delta()));
+        }
+    }
 
-        let selected = app.selected == Some(i);
+    // Third pass: draw rectangles + labels.
+    for (i, rect, internal) in &snapshot {
+        let m = &app.monitors[*i];
+        let selected = app.selected == Some(*i);
         let fill = if selected {
             egui::Color32::from_rgb(60, 120, 200)
         } else {
             egui::Color32::from_rgb(70, 70, 80)
         };
-        painter.rect_filled(rect, 4.0, fill);
+        painter.rect_filled(*rect, 4.0, fill);
         painter.rect_stroke(
-            rect,
+            *rect,
             4.0,
             egui::Stroke::new(2.0, egui::Color32::WHITE),
             egui::StrokeKind::Outside,
         );
-
-        let internal = hyprmonitor::algo::primary::is_internal(&m.connector_hint);
         let label = format!(
             "{}{}\n{}×{} @{}\nscale {}",
             m.connector_hint,
-            if internal { " (laptop)" } else { "" },
+            if *internal { " (laptop)" } else { "" },
             m.chosen_mode.width,
             m.chosen_mode.height,
             m.chosen_mode.refresh_hz.round() as u32,
@@ -126,5 +148,70 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
 
     if let Some(i) = click_target {
         app.selected = Some(i);
+    }
+    if let Some((i, delta)) = drag_target {
+        let world_dx = (delta.x / scale) as i32;
+        let world_dy = (delta.y / scale) as i32;
+        if world_dx != 0 || world_dy != 0 {
+            app.monitors[i].position.0 += world_dx;
+            app.monitors[i].position.1 += world_dy;
+            apply_snap(&mut app.monitors, i);
+            app.dirty = true;
+        }
+    }
+}
+
+const SNAP_PX: i32 = 20;
+
+fn apply_snap(monitors: &mut Vec<crate::app::EditableMonitor>, idx: usize) {
+    let me = monitors[idx].clone();
+    let (me_w, me_h) = footprint(&me);
+    let me_left = me.position.0 as f32;
+    let me_top = me.position.1 as f32;
+    let me_right = me_left + me_w;
+    let me_bottom = me_top + me_h;
+
+    let mut best_dx: Option<i32> = None;
+    let mut best_dy: Option<i32> = None;
+
+    for (j, other) in monitors.iter().enumerate() {
+        if j == idx || other.disabled {
+            continue;
+        }
+        let (ow, oh) = footprint(other);
+        let o_left = other.position.0 as f32;
+        let o_top = other.position.1 as f32;
+        let o_right = o_left + ow;
+        let o_bottom = o_top + oh;
+
+        for (a, b) in [
+            (me_right, o_left),
+            (me_left, o_right),
+            (me_left, o_left),
+            (me_right, o_right),
+        ] {
+            let dx = (b - a).round() as i32;
+            if dx.abs() <= SNAP_PX && best_dx.map_or(true, |bd| dx.abs() < bd.abs()) {
+                best_dx = Some(dx);
+            }
+        }
+        for (a, b) in [
+            (me_bottom, o_top),
+            (me_top, o_bottom),
+            (me_top, o_top),
+            (me_bottom, o_bottom),
+        ] {
+            let dy = (b - a).round() as i32;
+            if dy.abs() <= SNAP_PX && best_dy.map_or(true, |bd| dy.abs() < bd.abs()) {
+                best_dy = Some(dy);
+            }
+        }
+    }
+
+    if let Some(dx) = best_dx {
+        monitors[idx].position.0 += dx;
+    }
+    if let Some(dy) = best_dy {
+        monitors[idx].position.1 += dy;
     }
 }
