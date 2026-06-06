@@ -154,38 +154,6 @@ impl eframe::App for App {
                 self.dirty = true;
             }
         }
-        if save_requested {
-            match tokio::runtime::Handle::current().block_on(crate::save::save_and_apply(self)) {
-                Ok(()) => {
-                    self.dirty = false;
-                    self.last_error = Some("Saved \u{2713}".to_string());
-                }
-                Err(e) => {
-                    self.last_error = Some(e.to_string());
-                }
-            }
-        }
-        if reload_requested {
-            match tokio::runtime::Handle::current().block_on(reload_monitors()) {
-                Ok((monitors, cfg)) => {
-                    self.load(&monitors, &cfg);
-                    self.last_error = Some("Reloaded \u{2713}".to_string());
-                }
-                Err(e) => self.last_error = Some(format!("Reload failed: {}", e)),
-            }
-        }
-        if reset_requested {
-            match tokio::runtime::Handle::current().block_on(reload_monitors()) {
-                Ok((monitors, _cfg)) => {
-                    let empty = hyprmonitor::config::Config::default();
-                    self.load(&monitors, &empty);
-                    self.dirty = true;
-                    self.last_error = Some("Reset to auto (unsaved)".to_string());
-                }
-                Err(e) => self.last_error = Some(format!("Reset failed: {}", e)),
-            }
-        }
-
         egui::Panel::top("toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("hyprmonitor");
@@ -235,5 +203,41 @@ impl eframe::App for App {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             crate::canvas::render(ui, self);
         });
+
+        // Process flags AFTER the toolbar renders, so button clicks set the flags
+        // before we read them. (Ctrl+S sets save_requested above the toolbar and
+        // would otherwise work via input state, but the buttons themselves only
+        // emit a click during the panel render.)
+        if save_requested {
+            match tokio::runtime::Handle::current().block_on(crate::save::save_and_apply(self)) {
+                Ok(()) => {
+                    self.dirty = false;
+                    self.last_error = Some("Saved \u{2713}".to_string());
+                }
+                Err(e) => {
+                    self.last_error = Some(e.to_string());
+                }
+            }
+        }
+        if reload_requested {
+            match tokio::runtime::Handle::current().block_on(reload_monitors()) {
+                Ok((monitors, cfg)) => {
+                    self.load(&monitors, &cfg);
+                    self.last_error = Some("Reloaded \u{2713}".to_string());
+                }
+                Err(e) => self.last_error = Some(format!("Reload failed: {}", e)),
+            }
+        }
+        if reset_requested {
+            match tokio::runtime::Handle::current().block_on(reload_monitors()) {
+                Ok((monitors, _cfg)) => {
+                    let empty = hyprmonitor::config::Config::default();
+                    self.load(&monitors, &empty);
+                    self.dirty = true;
+                    self.last_error = Some("Reset to auto (unsaved)".to_string());
+                }
+                Err(e) => self.last_error = Some(format!("Reset failed: {}", e)),
+            }
+        }
     }
 }
