@@ -108,6 +108,44 @@ fn format_hz(hz: f64) -> String {
 // ui(ui, frame).  Panels must use show_inside(ui, …) instead of show(ctx, …).
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let (escape, ctrl_s, dx, dy) = ui.input(|i| {
+            let escape = i.key_pressed(egui::Key::Escape);
+            let ctrl_s = i.modifiers.ctrl && i.key_pressed(egui::Key::S);
+            let dx = if i.key_pressed(egui::Key::ArrowRight) {
+                1
+            } else if i.key_pressed(egui::Key::ArrowLeft) {
+                -1
+            } else {
+                0
+            };
+            let dy = if i.key_pressed(egui::Key::ArrowDown) {
+                1
+            } else if i.key_pressed(egui::Key::ArrowUp) {
+                -1
+            } else {
+                0
+            };
+            (escape, ctrl_s, dx, dy)
+        });
+
+        let mut save_requested = false;
+        if escape {
+            self.selected = None;
+        }
+        if ctrl_s {
+            save_requested = true;
+        }
+        if let Some(idx) = self.selected {
+            if (dx != 0 || dy != 0) && idx < self.monitors.len() {
+                self.monitors[idx].position.0 += dx;
+                self.monitors[idx].position.1 += dy;
+                self.dirty = true;
+            }
+        }
+        if save_requested {
+            self.last_error = Some("Save not yet implemented".to_string());
+        }
+
         egui::Panel::top("toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("hyprmonitor");
