@@ -46,11 +46,12 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
     let bounds = world_bounds(&app.monitors);
     let canvas_rect = ui.available_rect_before_wrap();
 
-    if app.canvas_scale <= 0.0 {
-        let sx = (canvas_rect.width() - 40.0) / bounds.width().max(1.0);
-        let sy = (canvas_rect.height() - 40.0) / bounds.height().max(1.0);
-        app.canvas_scale = sx.min(sy).max(0.01);
-    }
+    // Always recompute the fit so the layout stays optimally sized as the
+    // window resizes or monitors move. The 60px margin leaves room around
+    // the rectangles so they don't kiss the panel edges.
+    let sx = (canvas_rect.width() - 60.0) / bounds.width().max(1.0);
+    let sy = (canvas_rect.height() - 60.0) / bounds.height().max(1.0);
+    app.canvas_scale = sx.min(sy).max(0.01);
 
     let to_screen = |wx: f32, wy: f32, scale: f32, center: egui::Pos2| -> egui::Pos2 {
         egui::pos2(
