@@ -22,6 +22,7 @@ pub struct MonitorConfig {
     pub mode: Mode,
     pub position: (i32, i32),
     pub scale: f64,
+    pub rotation: u16,
 }
 
 impl std::fmt::Display for MonitorConfig {
@@ -38,7 +39,12 @@ impl std::fmt::Display for MonitorConfig {
             self.position.0,
             self.position.1,
             scale
-        )
+        )?;
+        if self.rotation != 0 {
+            let transform = (self.rotation / 90) % 4;
+            write!(f, ",transform,{}", transform)?;
+        }
+        Ok(())
     }
 }
 
@@ -71,6 +77,7 @@ mod tests {
             mode: Mode { width: 2560, height: 1440, refresh_hz: 165.0 },
             position: (0, 0),
             scale: 1.0,
+            rotation: 0,
         };
         assert_eq!(cfg.to_string(), "DP-1,2560x1440@165,0x0,1");
     }
@@ -82,7 +89,20 @@ mod tests {
             mode: Mode { width: 1920, height: 1080, refresh_hz: 59.951 },
             position: (2560, 0),
             scale: 1.25,
+            rotation: 0,
         };
         assert_eq!(cfg.to_string(), "eDP-1,1920x1080@59.951,2560x0,1.25");
+    }
+
+    #[test]
+    fn monitor_config_emits_transform_when_rotated() {
+        let cfg = MonitorConfig {
+            name: "DP-2".to_string(),
+            mode: Mode { width: 1920, height: 1080, refresh_hz: 60.0 },
+            position: (1920, 0),
+            scale: 1.0,
+            rotation: 90,
+        };
+        assert_eq!(cfg.to_string(), "DP-2,1920x1080@60,1920x0,1,transform,1");
     }
 }

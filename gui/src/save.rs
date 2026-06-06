@@ -80,6 +80,7 @@ pub async fn save_and_apply(app: &App) -> Result<()> {
             mode: m.chosen_mode.clone(),
             position: m.position,
             scale: m.scale,
+            rotation: m.rotation,
         };
         let arg = cfg_entry.to_string();
         let output = tokio::process::Command::new("hyprctl")

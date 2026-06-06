@@ -127,6 +127,7 @@ pub fn merge_into_plan(
             }
             plan[i].position = (o.position.x, o.position.y);
             plan[i].scale = o.scale;
+            plan[i].rotation = o.rotation;
         }
         i += 1;
     }
@@ -274,6 +275,7 @@ mod tests {
             mode: Mode { width: 1920, height: 1080, refresh_hz: 60.0 },
             position: (0, 0),
             scale: 1.0,
+            rotation: 0,
         }
     }
 
@@ -346,5 +348,16 @@ mod tests {
         // But position and scale still applied
         assert_eq!(plan[0].position, (100, 200));
         assert_eq!(plan[0].scale, 1.5);
+    }
+
+    #[test]
+    fn merge_applies_rotation_override() {
+        let monitors = vec![fake_mon("DP-1", None)];
+        let mut plan = vec![fake_plan_entry("DP-1")];
+        let mut o = fake_cfg("DP-1", None, "1920x1080@60");
+        o.rotation = 90;
+        let cfg = Config { version: 1, monitors: vec![o] };
+        merge_into_plan(&mut plan, &monitors, &cfg);
+        assert_eq!(plan[0].rotation, 90);
     }
 }
