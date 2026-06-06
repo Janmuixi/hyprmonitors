@@ -1,3 +1,4 @@
+use crate::model::{Mode, MonitorConfig};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tracing::warn;
@@ -81,6 +82,65 @@ pub fn write_atomic(path: &Path, cfg: &Config) -> std::io::Result<()> {
     }
     std::fs::rename(&tmp, path)?;
     Ok(())
+}
+
+/// Merge user overrides into the auto-generated plan. For each entry in `plan`:
+/// - Look up a matching `MonitorOverride` by `edid_id` first, then by
+///   `connector_hint`. The match also requires the chosen override to be
+///   parseable into a `Mode`.
+/// - If matched: replace mode/scale/position with the override's values.
+///   `disabled: true` removes the entry from the plan.
+/// - If not matched: leave the entry as-is.
+///
+/// Each plan entry carries an `edid_id` and `connector_hint` from the
+/// originating Monitor — these are looked up via the `Monitor` slice passed
+/// in alongside the plan (zip-aligned by index).
+pub fn merge_into_plan(
+    plan: &mut Vec<MonitorConfig>,
+    monitors: &[crate::model::Monitor],
+    cfg: &Config,
+) {
+    let mut i = 0;
+    while i < plan.len() {
+        let entry_name = &plan[i].name;
+        // Find the matching Monitor (zipped by name, which matches by construction
+        // because algo::plan preserves names).
+        let monitor = monitors.iter().find(|m| &m.name == entry_name);
+
+        let override_entry = cfg.monitors.iter().find(|o| {
+            // Prefer edid_id match.
+            match (monitor.and_then(|m| m.edid_id.as_deref()), o.edid_id.as_deref()) {
+                (Some(mid), Some(oid)) if mid == oid => return true,
+                _ => {}
+            }
+            // Fall back to connector_hint.
+            o.connector_hint == *entry_name
+        });
+
+        if let Some(o) = override_entry {
+            if o.disabled {
+                plan.remove(i);
+                continue;
+            }
+            if let Some(mode) = parse_mode_string(&o.mode) {
+                plan[i].mode = mode;
+            }
+            plan[i].position = (o.position.x, o.position.y);
+            plan[i].scale = o.scale;
+        }
+        i += 1;
+    }
+}
+
+fn parse_mode_string(s: &str) -> Option<Mode> {
+    let (res, hz) = s.split_once('@')?;
+    let (w, h) = res.split_once('x')?;
+    let hz = hz.trim_end_matches("Hz").trim();
+    Some(Mode {
+        width: w.parse().ok()?,
+        height: h.parse().ok()?,
+        refresh_hz: hz.parse().ok()?,
+    })
 }
 
 #[cfg(test)]
@@ -180,5 +240,111 @@ mod tests {
         write_atomic(&path, &cfg).expect("write");
         let tmp = path.with_extension("json.tmp");
         assert!(!tmp.exists(), "{} should not exist after success", tmp.display());
+    }
+
+    use crate::model::{Mode, Monitor, MonitorConfig};
+
+    fn fake_mon(name: &str, edid_id: Option<&str>) -> Monitor {
+        Monitor {
+            name: name.to_string(),
+            width_px: 1920,
+            height_px: 1080,
+            physical_mm: None,
+            preferred_mode: None,
+            edid_id: edid_id.map(String::from),
+            available_modes: vec![Mode { width: 1920, height: 1080, refresh_hz: 60.0 }],
+        }
+    }
+
+    fn fake_cfg(name: &str, edid_id: Option<&str>, mode: &str) -> MonitorOverride {
+        MonitorOverride {
+            edid_id: edid_id.map(String::from),
+            connector_hint: name.to_string(),
+            position: Position { x: 100, y: 200 },
+            mode: mode.to_string(),
+            scale: 1.5,
+            rotation: 0,
+            disabled: false,
+        }
+    }
+
+    fn fake_plan_entry(name: &str) -> MonitorConfig {
+        MonitorConfig {
+            name: name.to_string(),
+            mode: Mode { width: 1920, height: 1080, refresh_hz: 60.0 },
+            position: (0, 0),
+            scale: 1.0,
+        }
+    }
+
+    #[test]
+    fn merge_matches_by_edid_id() {
+        let monitors = vec![fake_mon("HDMI-A-1", Some("GSM-1234-00000001"))];
+        let mut plan = vec![fake_plan_entry("HDMI-A-1")];
+        let cfg = Config {
+            version: 1,
+            monitors: vec![fake_cfg("DOES-NOT-MATTER", Some("GSM-1234-00000001"), "2560x1440@60")],
+        };
+        merge_into_plan(&mut plan, &monitors, &cfg);
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].mode.width, 2560);
+        assert_eq!(plan[0].position, (100, 200));
+        assert_eq!(plan[0].scale, 1.5);
+    }
+
+    #[test]
+    fn merge_falls_back_to_connector_hint() {
+        let monitors = vec![fake_mon("DP-1", None)];
+        let mut plan = vec![fake_plan_entry("DP-1")];
+        let cfg = Config {
+            version: 1,
+            monitors: vec![fake_cfg("DP-1", None, "2560x1440@60")],
+        };
+        merge_into_plan(&mut plan, &monitors, &cfg);
+        assert_eq!(plan[0].mode.width, 2560);
+    }
+
+    #[test]
+    fn merge_disabled_removes_entry() {
+        let monitors = vec![
+            fake_mon("eDP-1", Some("LEN-1234-00000001")),
+            fake_mon("HDMI-A-1", Some("GSM-1234-00000001")),
+        ];
+        let mut plan = vec![fake_plan_entry("eDP-1"), fake_plan_entry("HDMI-A-1")];
+        let mut disabled = fake_cfg("HDMI-A-1", Some("GSM-1234-00000001"), "1920x1080@60");
+        disabled.disabled = true;
+        let cfg = Config { version: 1, monitors: vec![disabled] };
+        merge_into_plan(&mut plan, &monitors, &cfg);
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].name, "eDP-1");
+    }
+
+    #[test]
+    fn merge_no_match_leaves_plan_untouched() {
+        let monitors = vec![fake_mon("DP-1", Some("ABC-1234-00000001"))];
+        let mut plan = vec![fake_plan_entry("DP-1")];
+        let original = plan.clone();
+        let cfg = Config {
+            version: 1,
+            monitors: vec![fake_cfg("OTHER", Some("XYZ-9999-00000099"), "9999x9999@60")],
+        };
+        merge_into_plan(&mut plan, &monitors, &cfg);
+        assert_eq!(plan, original);
+    }
+
+    #[test]
+    fn merge_malformed_mode_string_falls_back() {
+        let monitors = vec![fake_mon("DP-1", None)];
+        let mut plan = vec![fake_plan_entry("DP-1")];
+        let cfg = Config {
+            version: 1,
+            monitors: vec![fake_cfg("DP-1", None, "garbage")],
+        };
+        merge_into_plan(&mut plan, &monitors, &cfg);
+        // Mode unchanged because the override's mode string couldn't parse
+        assert_eq!(plan[0].mode.width, 1920);
+        // But position and scale still applied
+        assert_eq!(plan[0].position, (100, 200));
+        assert_eq!(plan[0].scale, 1.5);
     }
 }
