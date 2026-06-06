@@ -137,6 +137,10 @@ impl eframe::App for App {
         let mut save_requested = false;
         let mut reset_requested = false;
         let mut reload_requested = false;
+
+        let validation_error: Option<String> = crate::save::validate(&self.monitors)
+            .err()
+            .map(|e| e.to_string());
         if escape {
             self.selected = None;
         }
@@ -191,11 +195,26 @@ impl eframe::App for App {
                     self.monitors.len(),
                     if self.dirty { " (unsaved)" } else { "" }
                 ));
-                if let Some(err) = &self.last_error {
-                    ui.colored_label(egui::Color32::LIGHT_RED, err);
+                if let Some(reason) = &validation_error {
+                    ui.colored_label(egui::Color32::LIGHT_RED, format!("⚠ {}", reason));
+                }
+                if let Some(msg) = &self.last_error {
+                    let color = if msg.contains('✓') {
+                        egui::Color32::LIGHT_GREEN
+                    } else {
+                        egui::Color32::LIGHT_RED
+                    };
+                    ui.colored_label(color, msg);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("\u{1f4be} Save & Apply").clicked() {
+                    let save_button = egui::Button::new("\u{1f4be} Save & Apply");
+                    let save_resp = ui.add_enabled(validation_error.is_none(), save_button);
+                    let save_resp = if let Some(reason) = &validation_error {
+                        save_resp.on_hover_text(reason)
+                    } else {
+                        save_resp
+                    };
+                    if save_resp.clicked() {
                         save_requested = true;
                     }
                     if ui.button("\u{27f2} Reset to auto").clicked() {
