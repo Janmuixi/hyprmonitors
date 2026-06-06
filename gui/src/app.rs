@@ -120,7 +120,7 @@ impl eframe::App for App {
             });
         });
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.label("(canvas will go here)");
+            crate::canvas::render(ui, self);
         });
     }
 }
