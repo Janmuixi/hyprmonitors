@@ -59,6 +59,30 @@ pub fn load_or_default(path: &Path) -> Config {
     }
 }
 
+/// Atomically write `cfg` to `path` by writing to `<path>.tmp`, fsyncing,
+/// and renaming. Returns an io::Result; on failure, the original file at
+/// `path` (if any) is untouched.
+pub fn write_atomic(path: &Path, cfg: &Config) -> std::io::Result<()> {
+    use std::io::Write;
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let tmp = path.with_extension(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| format!("{}.tmp", e))
+            .unwrap_or_else(|| "tmp".to_string()),
+    );
+    let json = serde_json::to_vec_pretty(cfg)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(&json)?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,5 +138,47 @@ mod tests {
         let f = write_tmp(r#"{ "version": 999, "monitors": [] }"#);
         let cfg = load_or_default(f.path());
         assert_eq!(cfg, Config::default());
+    }
+
+    #[test]
+    fn write_atomic_creates_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("monitors.json");
+        let cfg = Config {
+            version: 1,
+            monitors: vec![MonitorOverride {
+                edid_id: None,
+                connector_hint: "DP-1".to_string(),
+                position: Position { x: 0, y: 0 },
+                mode: "1920x1080@60".to_string(),
+                scale: 1.0,
+                rotation: 0,
+                disabled: false,
+            }],
+        };
+        write_atomic(&path, &cfg).expect("write");
+        let reloaded = load_or_default(&path);
+        assert_eq!(reloaded, cfg);
+    }
+
+    #[test]
+    fn write_atomic_overwrites_existing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("monitors.json");
+        std::fs::write(&path, b"OLD CONTENTS").expect("seed");
+        let cfg = Config { version: 1, monitors: vec![] };
+        write_atomic(&path, &cfg).expect("write");
+        let reloaded = load_or_default(&path);
+        assert_eq!(reloaded, cfg);
+    }
+
+    #[test]
+    fn write_atomic_leaves_no_tmp_on_success() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("monitors.json");
+        let cfg = Config { version: 1, monitors: vec![] };
+        write_atomic(&path, &cfg).expect("write");
+        let tmp = path.with_extension("json.tmp");
+        assert!(!tmp.exists(), "{} should not exist after success", tmp.display());
     }
 }
