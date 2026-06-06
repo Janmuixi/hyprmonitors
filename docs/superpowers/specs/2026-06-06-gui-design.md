@@ -151,7 +151,7 @@ struct EditableMonitor {
 ### Frame loop
 
 1. **Top toolbar:** `[↻ Reload]  [⟲ Reset to auto]  [💾 Save & apply]  status: "N monitors, total WxH"`.
-2. **Canvas (`CentralPanel`):** draw each `EditableMonitor` as a `Rect` at `(position.x * canvas_scale, position.y * canvas_scale)` sized `(mode.width / scale, mode.height / scale) * canvas_scale`. Internal panels (`primary::is_internal(connector_hint)`) tagged "(laptop)".
+2. **Canvas (`CentralPanel`):** draw each `EditableMonitor` as a `Rect` at `(position.x * canvas_scale, position.y * canvas_scale)`. Rectangle size is `(mode.width / scale, mode.height / scale) * canvas_scale` for rotation 0 or 180, and `(mode.height / scale, mode.width / scale) * canvas_scale` for rotation 90 or 270 — rotation swaps the logical footprint. Internal panels (`primary::is_internal(connector_hint)`) tagged "(laptop)".
 3. **Dragging:** `ui.interact(rect, id, Sense::click_and_drag())`. While dragging, update `position` in world coords; on release, snap to any other monitor's edge within `20 / canvas_scale` world px.
 4. **Right-click → context menu:** Disable / Set as primary / Rotate (90 / 180 / 270 / reset to 0).
 5. **Inspector (`TopBottomPanel::bottom`):** when `selected.is_some()`, render dropdowns for resolution / refresh / scale, numeric inputs for x / y, checkbox for disabled, radio for rotation.
@@ -159,7 +159,7 @@ struct EditableMonitor {
 
 ### Save flow
 
-1. **Validate:** no overlapping monitors; all chosen modes are present in the monitor's `available_modes`. On failure, populate `last_error` and abort.
+1. **Validate:** no overlapping monitors among the *enabled* ones (disabled monitors don't count); all chosen modes are present in the monitor's `available_modes`; rotation is one of 0/90/180/270. On failure, populate `last_error` and abort.
 2. **Serialize** `Vec<EditableMonitor>` → `config::Config` → `serde_json::to_string_pretty`.
 3. **Atomic write** to `~/.config/hyprmonitor/monitors.json`.
 4. **Apply** each entry via the existing `hypr::apply` (same path the daemon uses; reused via the library).
