@@ -1,25 +1,21 @@
 # hyprmonitor
 
-Auto-configures Hyprland monitors when displays are plugged in or out. No config file needed — it picks a sensible mode, scale, and position for each connected monitor.
+Auto-configures Hyprland monitors when displays are plugged in or out, with an optional drag-and-drop GUI for custom layouts.
 
-## What it does
-
-- Picks each monitor's native resolution at its highest refresh rate.
-- Computes scale from physical DPI (EDID): 1.0 / 1.25 / 1.5 / 1.75 / 2.0.
-- Places the laptop panel (`eDP-*` / `LVDS-*` / `DSI-*`) at `(0, 0)`, externals to the right sorted by connector name.
-- Reacts to hotplug events with a 200 ms debounce, reconnects if Hyprland restarts.
-- Notifies via `notify-send` on failures only.
+- **`hyprmonitor`** — daemon + CLI that picks a sensible mode, scale, and position for every connected monitor and re-applies on hotplug.
+- **`hyprmonitor-gui`** — visual editor (egui) for overriding the auto-plan: drag monitors around, change mode / refresh / scale / rotation, save to JSON.
 
 ## Build
 
 ```sh
-cargo build --release
-# binary at ./target/release/hyprmonitor
+cargo build --release --workspace
+# target/release/hyprmonitor
+# target/release/hyprmonitor-gui
 ```
 
 Requires Rust 2021 edition and a live Hyprland session (developed against 0.54.x).
 
-## Usage
+## CLI usage
 
 ```sh
 hyprmonitor list              # show detected monitors and the plan
@@ -29,7 +25,7 @@ hyprmonitor daemon            # run as a daemon, reacting to hotplug events
 hyprmonitor -v <cmd>          # debug logs
 ```
 
-## Auto-start with Hyprland
+### Auto-start with Hyprland
 
 Add to `~/.config/hypr/hyprland.conf`:
 
@@ -37,18 +33,34 @@ Add to `~/.config/hypr/hyprland.conf`:
 exec-once = /path/to/hyprmonitor daemon
 ```
 
-## How it picks the config
+## GUI
 
-For each monitor:
+![hyprmonitor-gui showing three monitors with the middle one selected](screenshot.png)
 
-1. **Mode:** the highest pixel count in `availableModes`, then the highest refresh rate at that resolution.
-2. **Scale:** computed from the EDID-derived diagonal DPI. Falls back to `1.0` if EDID is unavailable.
-3. **Position:** monitors are laid out left-to-right at `y = 0`; effective width = `mode.width / scale`. Internal panel goes first.
+Run `hyprmonitor-gui` to open the editor. Each monitor is a draggable rectangle sized to its **logical footprint** (`mode.width / scale`). Internal panels (eDP/LVDS/DSI) are labelled `(laptop)`.
 
-When you close your laptop lid, the eDP disappears from Hyprland's monitor list — the daemon's next reconfigure naturally promotes the external to the primary slot. Reopening puts it back.
+- **Drag** any rectangle to move it. Drops snap to neighbouring edges within 20px; on release a wider 200px alignment pass closes any small gap so the cursor can cross between monitors. Hyprland only allows cursor travel across exactly-adjacent regions.
+- **Click** a monitor to select it (highlighted blue). The inspector at the bottom lets you change resolution / refresh / scale / position / rotation / disabled state.
+- **Arrow keys** with a monitor selected nudge by 1 logical px. **Esc** deselects.
+- **Save & Apply** (or **Ctrl+S**) validates the layout, writes `~/.config/hyprmonitor/monitors.json`, and runs `hyprctl keyword monitor …` for each enabled monitor. The button greys out and shows `⚠ <reason>` if monitors overlap or a mode isn't supported.
+- **Reload** re-queries Hyprland (use after a hotplug while the GUI is open). **Reset to auto** discards overrides and shows the daemon's automatic plan (still requires Save to persist).
+
+The saved JSON keys each monitor on an **EDID-derived identifier** (manufacturer + product + serial, with a week/year fallback when the serial is zero), so a different monitor on the same connector never inherits your saved layout.
+
+## How the daemon picks the auto-plan
+
+For each monitor, when no override is set:
+
+1. **Mode:** the EDID-preferred resolution if available, otherwise the highest pixel count, then the highest refresh rate at that resolution.
+2. **Scale:** computed from the EDID diagonal DPI — `<110 → 1.0`, `<140 → 1.25`, `<170 → 1.5`, `<220 → 1.75`, `≥220 → 2.0`. Falls back to `1.0` if EDID is unreadable.
+3. **Position:** monitors laid out left-to-right at `y = 0`. Internal panel goes first, then externals sorted by connector name. Effective width = `mode.width / scale`.
+
+On every reconfigure, the daemon reads `~/.config/hyprmonitor/monitors.json` (if present) and overlays its entries onto the auto-plan — matched by EDID id, then by connector name. Monitors marked `"disabled": true` are dropped from the plan.
+
+When you close your laptop lid, the eDP disappears from Hyprland's monitor list and the daemon's next reconfigure promotes the externals to fill the layout. Reopening puts it back.
 
 ## Limitations
 
-- Verify-after-apply only checks resolution, not refresh rate (Hyprland's IPC doesn't surface the active refresh on each monitor through the crate we use).
-- No per-monitor config overrides — everything is automatic.
-- No VRR, HDR, mirroring, or rotation. Layer those on yourself via your own `hyprland.conf` after the daemon's config line.
+- Verify-after-apply only compares resolution, not refresh rate (the value isn't surfaced by the Hyprland crate we use).
+- No VRR / HDR / mirroring controls. Layer those on yourself in `hyprland.conf`.
+- The GUI doesn't yet watch the config file — daemon picks up changes on the next hotplug. Run `hyprmonitor apply` after editing the JSON if you need it sooner.
