@@ -72,6 +72,7 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
     let scale = app.canvas_scale;
     let mut click_target: Option<usize> = None;
     let mut drag_target: Option<(usize, egui::Vec2)> = None;
+    let mut drag_stopped = false;
 
     // First pass: snapshot the rectangles for interaction + drawing.
     let snapshot: Vec<(usize, egui::Rect, bool)> = app
@@ -109,6 +110,9 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         if response.dragged() {
             click_target = Some(*i);
             drag_target = Some((*i, response.drag_delta()));
+        }
+        if response.drag_stopped() {
+            drag_stopped = true;
         }
     }
 
@@ -158,6 +162,10 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
             apply_snap(&mut app.monitors, i);
             app.dirty = true;
         }
+    }
+    if drag_stopped {
+        align_all(&mut app.monitors);
+        app.dirty = true;
     }
 }
 
