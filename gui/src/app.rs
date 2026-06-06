@@ -143,7 +143,15 @@ impl eframe::App for App {
             }
         }
         if save_requested {
-            self.last_error = Some("Save not yet implemented".to_string());
+            match tokio::runtime::Handle::current().block_on(crate::save::save_and_apply(self)) {
+                Ok(()) => {
+                    self.dirty = false;
+                    self.last_error = Some("Saved \u{2713}".to_string());
+                }
+                Err(e) => {
+                    self.last_error = Some(e.to_string());
+                }
+            }
         }
 
         egui::Panel::top("toolbar").show_inside(ui, |ui| {
@@ -155,6 +163,14 @@ impl eframe::App for App {
                     self.monitors.len(),
                     if self.dirty { " (unsaved)" } else { "" }
                 ));
+                if let Some(err) = &self.last_error {
+                    ui.colored_label(egui::Color32::LIGHT_RED, err);
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("\u{1f4be} Save & Apply").clicked() {
+                        save_requested = true;
+                    }
+                });
             });
         });
         egui::Panel::bottom("inspector")
