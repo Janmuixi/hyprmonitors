@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "gui"]
+resolver = "2"
+
 [package]
 name = "hyprmonitor"
 version = "0.1.0"
