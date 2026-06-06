@@ -91,6 +91,43 @@ pub fn pick_scale_from_dpi(dpi: f64) -> f64 {
     }
 }
 
+/// Derive a stable string identifier for a physical panel from raw EDID bytes.
+/// Returns:
+/// - `MFG-PRODUCT-SERIAL` when serial != 0 (e.g., "LEN-4032-00012345")
+/// - `MFG-PRODUCT-W<week>Y<year>` when serial == 0
+/// - None if the EDID header is invalid or the buffer is too short
+pub fn derive_edid_id(edid: &[u8]) -> Option<String> {
+    const HEADER: [u8; 8] = [0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00];
+    if edid.len() < 18 {
+        return None;
+    }
+    if edid[0..8] != HEADER {
+        return None;
+    }
+    let raw = u16::from_be_bytes([edid[8], edid[9]]);
+    let c1 = ((raw >> 10) & 0x1F) as u8;
+    let c2 = ((raw >> 5) & 0x1F) as u8;
+    let c3 = (raw & 0x1F) as u8;
+    if c1 == 0 || c2 == 0 || c3 == 0 || c1 > 26 || c2 > 26 || c3 > 26 {
+        return None;
+    }
+    let mfg = format!(
+        "{}{}{}",
+        (b'A' + c1 - 1) as char,
+        (b'A' + c2 - 1) as char,
+        (b'A' + c3 - 1) as char,
+    );
+    let product = u16::from_le_bytes([edid[10], edid[11]]);
+    let serial = u32::from_le_bytes([edid[12], edid[13], edid[14], edid[15]]);
+    if serial != 0 {
+        Some(format!("{}-{:04X}-{:08X}", mfg, product, serial))
+    } else {
+        let week = edid[16];
+        let year = 1990u16 + edid[17] as u16;
+        Some(format!("{}-{:04X}-W{}Y{}", mfg, product, week, year))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,6 +151,24 @@ mod tests {
         bytes[58] = (((h_active >> 8) & 0x0F) as u8) << 4;
         bytes[59] = (v_active & 0xFF) as u8;
         bytes[61] = (((v_active >> 8) & 0x0F) as u8) << 4;
+        bytes
+    }
+
+    fn edid_with_id(mfg: [u8; 2], product: u16, serial: u32, week: u8, year: u8) -> Vec<u8> {
+        let mut bytes = vec![0u8; 128];
+        bytes[0..8].copy_from_slice(&[0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00]);
+        bytes[8] = mfg[0];
+        bytes[9] = mfg[1];
+        let p = product.to_le_bytes();
+        bytes[10] = p[0];
+        bytes[11] = p[1];
+        let s = serial.to_le_bytes();
+        bytes[12] = s[0];
+        bytes[13] = s[1];
+        bytes[14] = s[2];
+        bytes[15] = s[3];
+        bytes[16] = week;
+        bytes[17] = year;
         bytes
     }
 
@@ -251,5 +306,40 @@ mod tests {
         // signal would imply.
         assert_eq!(pick_scale(1920, 1080, Some((530, 300))), 1.0);
         assert_eq!(pick_scale(3840, 2160, Some((530, 300))), 1.75);
+    }
+
+    #[test]
+    fn derives_id_with_serial() {
+        // MFG "LEN" packs as: 'L'=12 'E'=5 'N'=14 -> bits 0_01100_00101_01110 = 0x30AE
+        // Big-endian, so bytes are [0x30, 0xAE]
+        let edid = edid_with_id([0x30, 0xAE], 0x4032, 0x12345, 30, 33);
+        assert_eq!(
+            derive_edid_id(&edid),
+            Some("LEN-4032-00012345".to_string())
+        );
+    }
+
+    #[test]
+    fn derives_id_with_zero_serial_uses_week_year() {
+        // MFG "GSM": 'G'=7 'S'=19 'M'=13 -> bits 0_00111_10011_01101 = 0x1E6D
+        let edid = edid_with_id([0x1E, 0x6D], 0x5BBF, 0, 12, 33);
+        assert_eq!(
+            derive_edid_id(&edid),
+            Some("GSM-5BBF-W12Y2023".to_string())
+        );
+    }
+
+    #[test]
+    fn derives_id_returns_none_for_invalid_header() {
+        let mut edid = vec![0u8; 128];
+        edid[8] = 0x30;
+        edid[9] = 0xAE;
+        assert_eq!(derive_edid_id(&edid), None);
+    }
+
+    #[test]
+    fn derives_id_returns_none_for_short_buffer() {
+        let edid = vec![0u8; 10];
+        assert_eq!(derive_edid_id(&edid), None);
     }
 }
