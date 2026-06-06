@@ -95,6 +95,12 @@ impl App {
     }
 }
 
+async fn reload_monitors() -> anyhow::Result<(Vec<hyprmonitor::model::Monitor>, hyprmonitor::config::Config)> {
+    let monitors = crate::query_hyprctl_monitors().await?;
+    let cfg = hyprmonitor::config::load_or_default(&crate::save::config_path());
+    Ok((monitors, cfg))
+}
+
 fn format_hz(hz: f64) -> String {
     if (hz - hz.round()).abs() < 1e-6 {
         format!("{}", hz as u32)
@@ -129,6 +135,8 @@ impl eframe::App for App {
         });
 
         let mut save_requested = false;
+        let mut reset_requested = false;
+        let mut reload_requested = false;
         if escape {
             self.selected = None;
         }
@@ -153,6 +161,26 @@ impl eframe::App for App {
                 }
             }
         }
+        if reload_requested {
+            match tokio::runtime::Handle::current().block_on(reload_monitors()) {
+                Ok((monitors, cfg)) => {
+                    self.load(&monitors, &cfg);
+                    self.last_error = Some("Reloaded \u{2713}".to_string());
+                }
+                Err(e) => self.last_error = Some(format!("Reload failed: {}", e)),
+            }
+        }
+        if reset_requested {
+            match tokio::runtime::Handle::current().block_on(reload_monitors()) {
+                Ok((monitors, _cfg)) => {
+                    let empty = hyprmonitor::config::Config::default();
+                    self.load(&monitors, &empty);
+                    self.dirty = true;
+                    self.last_error = Some("Reset to auto (unsaved)".to_string());
+                }
+                Err(e) => self.last_error = Some(format!("Reset failed: {}", e)),
+            }
+        }
 
         egui::Panel::top("toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
@@ -169,6 +197,12 @@ impl eframe::App for App {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("\u{1f4be} Save & Apply").clicked() {
                         save_requested = true;
+                    }
+                    if ui.button("\u{27f2} Reset to auto").clicked() {
+                        reset_requested = true;
+                    }
+                    if ui.button("\u{21bb} Reload").clicked() {
+                        reload_requested = true;
                     }
                 });
             });

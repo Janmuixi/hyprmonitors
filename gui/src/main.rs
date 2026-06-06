@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    let monitors = hyprmonitor_query().await?;
+    let monitors = query_hyprctl_monitors().await?;
     let cfg = config::load_or_default(&config_path());
 
     let mut app = App::new();
@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn hyprmonitor_query() -> Result<Vec<hyprmonitor::model::Monitor>> {
+pub(crate) async fn query_hyprctl_monitors() -> Result<Vec<hyprmonitor::model::Monitor>> {
     // The lib's hypr.rs lives in the bin crate, not the library, so we
     // shell out to `hyprctl` directly and reuse the same JSON shape.
     let output = tokio::process::Command::new("hyprctl")
