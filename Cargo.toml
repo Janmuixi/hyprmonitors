@@ -22,3 +22,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "hyprmonitor"
 path = "src/main.rs"
+
+[dev-dependencies]
+tempfile = "3"
