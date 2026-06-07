@@ -6,6 +6,7 @@ resolver = "2"
 name = "hyprmonitor"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 hyprland = "0.4.0-beta.3"
