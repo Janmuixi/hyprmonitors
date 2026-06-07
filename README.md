@@ -9,9 +9,21 @@ Auto-configures Hyprland monitors when displays are plugged in or out, with an o
 
 ```sh
 cargo build --release --workspace
-# target/release/hyprmonitor
-# target/release/hyprmonitor-gui
 ```
+
+Two binaries land in the workspace's `target/release/` directory:
+
+- `./target/release/hyprmonitor` — daemon + CLI
+- `./target/release/hyprmonitor-gui` — drag-and-drop editor
+
+To use them without typing the full path every time, either install them once:
+
+```sh
+sudo install -Dm755 target/release/hyprmonitor /usr/local/bin/hyprmonitor
+sudo install -Dm755 target/release/hyprmonitor-gui /usr/local/bin/hyprmonitor-gui
+```
+
+…or `cargo install --path .` (CLI only) and `cargo install --path gui` (GUI only). Or just use the full paths below — works either way.
 
 Requires Rust 2021 edition and a live Hyprland session (developed against 0.54.x).
 
@@ -37,7 +49,15 @@ exec-once = /path/to/hyprmonitor daemon
 
 ![hyprmonitor-gui showing three monitors with the middle one selected](screenshot.png)
 
-Run `hyprmonitor-gui` to open the editor. Each monitor is a draggable rectangle sized to its **logical footprint** (`mode.width / scale`). Internal panels (eDP/LVDS/DSI) are labelled `(laptop)`.
+Open the editor:
+
+```sh
+./target/release/hyprmonitor-gui
+# or, if installed to PATH:
+hyprmonitor-gui
+```
+
+Each monitor is a draggable rectangle sized to its **logical footprint** (`mode.width / scale`). Internal panels (eDP/LVDS/DSI) are labelled `(laptop)`.
 
 - **Drag** any rectangle to move it. Drops snap to neighbouring edges within 20px; on release a wider 200px alignment pass closes any small gap so the cursor can cross between monitors. Hyprland only allows cursor travel across exactly-adjacent regions.
 - **Click** a monitor to select it (highlighted blue). The inspector at the bottom lets you change resolution / refresh / scale / position / rotation / disabled state.
