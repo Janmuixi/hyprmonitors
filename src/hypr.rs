@@ -113,6 +113,33 @@ pub async fn apply(cfg: &MonitorConfig) -> Result<()> {
     Ok(())
 }
 
+/// Apply all monitor configurations in a single `hyprctl --batch` so
+/// Hyprland reconfigures everything atomically (no transient half-applied
+/// layout that drops topbars or splits the screen).
+pub async fn apply_batch(configs: &[MonitorConfig]) -> Result<()> {
+    if configs.is_empty() {
+        return Ok(());
+    }
+    let batch = configs
+        .iter()
+        .map(|c| format!("keyword monitor {}", c))
+        .collect::<Vec<_>>()
+        .join(" ; ");
+    let output = tokio::process::Command::new("hyprctl")
+        .args(["--batch", &batch])
+        .output()
+        .await
+        .context("hyprctl --batch")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "hyprctl --batch exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

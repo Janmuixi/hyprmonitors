@@ -75,25 +75,39 @@ pub fn save_and_apply(app: &mut App) -> Result<()> {
     let cfg = app.to_config();
     let path = config_path();
     config::write_atomic(&path, &cfg)?;
-    for m in app.monitors.iter().filter(|m| !m.disabled) {
-        let cfg_entry = MonitorConfig {
-            name: m.connector_hint.clone(),
-            mode: m.chosen_mode.clone(),
-            position: m.position,
-            scale: m.scale,
-            rotation: m.rotation,
-        };
-        let arg = cfg_entry.to_string();
-        let output = std::process::Command::new("hyprctl")
-            .args(["keyword", "monitor", &arg])
-            .output()?;
-        if !output.status.success() {
-            return Err(anyhow!(
-                "hyprctl keyword monitor {}: {}",
-                arg,
-                String::from_utf8_lossy(&output.stderr).trim()
-            ));
-        }
+
+    // Apply via `hyprctl --batch` so all monitor changes land in a single
+    // Hyprland transaction. Per-monitor calls would briefly leave the layout
+    // in a transitional state where waybar/topbar can lose its anchor.
+    let batch = app
+        .monitors
+        .iter()
+        .filter(|m| !m.disabled)
+        .map(|m| {
+            let cfg_entry = MonitorConfig {
+                name: m.connector_hint.clone(),
+                mode: m.chosen_mode.clone(),
+                position: m.position,
+                scale: m.scale,
+                rotation: m.rotation,
+            };
+            format!("keyword monitor {}", cfg_entry)
+        })
+        .collect::<Vec<_>>()
+        .join(" ; ");
+
+    if batch.is_empty() {
+        return Ok(());
+    }
+
+    let output = std::process::Command::new("hyprctl")
+        .args(["--batch", &batch])
+        .output()?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "hyprctl --batch: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
     }
     Ok(())
 }

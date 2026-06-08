@@ -77,15 +77,10 @@ async fn apply(dry_run: bool) -> Result<()> {
         return Ok(());
     }
 
-    for cfg in &plan {
-        tracing::info!("applying {}", cfg);
-        if let Err(e) = crate::hypr::apply(cfg).await {
-            tracing::error!("apply failed for {}: {:?}", cfg.name, e);
-            crate::notify::notify_failure(&format!(
-                "Failed to configure {}: {}",
-                cfg.name, e
-            ));
-        }
+    tracing::info!("applying {} monitor configs (batched)", plan.len());
+    if let Err(e) = crate::hypr::apply_batch(&plan).await {
+        tracing::error!("apply failed: {:?}", e);
+        crate::notify::notify_failure(&format!("Failed to configure monitors: {}", e));
     }
     Ok(())
 }

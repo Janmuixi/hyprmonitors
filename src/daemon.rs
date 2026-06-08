@@ -85,15 +85,10 @@ async fn reconfigure() {
     let mut plan = hyprmonitor::algo::plan(&monitors);
     let cfg = hyprmonitor::config::load_or_default(&config_path());
     hyprmonitor::config::merge_into_plan(&mut plan, &monitors, &cfg);
-    info!("applying {} monitor configs", plan.len());
-    for cfg in &plan {
-        if let Err(e) = crate::hypr::apply(cfg).await {
-            error!("apply failed for {}: {:?}", cfg.name, e);
-            crate::notify::notify_failure(&format!(
-                "Failed to configure {}: {}",
-                cfg.name, e
-            ));
-        }
+    info!("applying {} monitor configs (batched)", plan.len());
+    if let Err(e) = crate::hypr::apply_batch(&plan).await {
+        error!("apply failed: {:?}", e);
+        crate::notify::notify_failure(&format!("Failed to configure monitors: {}", e));
     }
     verify_applied(&plan).await;
 }
