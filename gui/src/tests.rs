@@ -67,6 +67,58 @@ fn to_config_round_trips_back_to_overrides() {
 }
 
 #[test]
+fn to_config_skips_monitors_matching_auto() {
+    // Pure-auto state — nothing edited. Saving should produce an empty
+    // override list so "Reset to auto" actually round-trips and future auto
+    // changes still apply.
+    let mut app = App::new();
+    app.load(&[fake_monitor("DP-1"), fake_monitor("HDMI-A-1")], &Config::default());
+    let cfg = app.to_config();
+    assert_eq!(cfg.monitors.len(), 0, "pure-auto should not emit any overrides");
+}
+
+#[test]
+fn to_config_emits_only_changed_monitors() {
+    let mut app = App::new();
+    app.load(&[fake_monitor("DP-1"), fake_monitor("HDMI-A-1")], &Config::default());
+    app.monitors[0].scale = 1.75; // only DP-1 deviates
+    let cfg = app.to_config();
+    assert_eq!(cfg.monitors.len(), 1);
+    assert_eq!(cfg.monitors[0].connector_hint, "DP-1");
+    assert_eq!(cfg.monitors[0].scale, 1.75);
+}
+
+#[test]
+fn to_config_drops_override_after_user_reverts_to_auto_value() {
+    // Start with an existing override that pins DP-1 to a non-auto scale.
+    let cfg = Config {
+        version: 1,
+        monitors: vec![MonitorOverride {
+            edid_id: Some("FAKE-0001-DP-1".to_string()),
+            connector_hint: "DP-1".to_string(),
+            position: Position { x: 0, y: 0 },
+            mode: "1920x1080@144".to_string(),
+            scale: 1.75,
+            rotation: 0,
+            disabled: false,
+        }],
+    };
+    let mut app = App::new();
+    app.load(&[fake_monitor("DP-1")], &cfg);
+    assert_eq!(app.monitors[0].scale, 1.75);
+
+    // User manually changes the scale back to the auto value (1.0 for this
+    // fake monitor, see fake_monitor() — 24" 1080p → ~92 DPI).
+    app.monitors[0].scale = 1.0;
+    let emitted = app.to_config();
+    assert_eq!(
+        emitted.monitors.len(),
+        0,
+        "matching auto means the override should be dropped, not preserved"
+    );
+}
+
+#[test]
 fn save_validate_rejects_overlapping_enabled_monitors() {
     use crate::save::validate;
     let mut app = App::new();

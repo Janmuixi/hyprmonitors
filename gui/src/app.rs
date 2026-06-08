@@ -1,6 +1,6 @@
 use hyprmonitor::algo;
 use hyprmonitor::config::{self, Config, MonitorOverride, Position};
-use hyprmonitor::model::{Mode, Monitor};
+use hyprmonitor::model::{Mode, Monitor, MonitorConfig};
 
 #[derive(Debug, Clone)]
 pub struct EditableMonitor {
@@ -17,6 +17,11 @@ pub struct EditableMonitor {
 
 pub struct App {
     pub monitors: Vec<EditableMonitor>,
+    /// The pre-merge auto plan from `algo::plan`, kept so `to_config` can
+    /// tell which monitors deviate from auto and skip the rest. Otherwise
+    /// every Save would freeze the current auto values into overrides and
+    /// "Reset to auto" would only last until the next click.
+    pub auto_plan: Vec<MonitorConfig>,
     pub selected: Option<usize>,
     pub canvas_scale: f32,
     pub canvas_offset: egui::Vec2,
@@ -28,6 +33,7 @@ impl App {
     pub fn new() -> Self {
         Self {
             monitors: Vec::new(),
+            auto_plan: Vec::new(),
             selected: None,
             canvas_scale: 0.05,
             canvas_offset: egui::Vec2::ZERO,
@@ -39,13 +45,14 @@ impl App {
     /// Build EditableMonitor list from a live query: take what algo::plan
     /// produces, layered with overrides from the config file.
     pub fn load(&mut self, monitors: &[Monitor], cfg: &Config) {
-        let mut plan = algo::plan(monitors);
-        config::merge_into_plan(&mut plan, monitors, cfg);
+        let auto_plan = algo::plan(monitors);
+        let mut merged = auto_plan.clone();
+        config::merge_into_plan(&mut merged, monitors, cfg);
 
         self.monitors = monitors
             .iter()
             .filter_map(|m| {
-                let entry = plan.iter().find(|p| p.name == m.name)?;
+                let entry = merged.iter().find(|p| p.name == m.name)?;
                 let cfg_entry = cfg.monitors.iter().find(|o| {
                     match (m.edid_id.as_deref(), o.edid_id.as_deref()) {
                         (Some(mid), Some(oid)) if mid == oid => true,
@@ -65,6 +72,7 @@ impl App {
                 })
             })
             .collect();
+        self.auto_plan = auto_plan;
         self.selected = None;
         self.dirty = false;
         self.last_error = None;
@@ -76,6 +84,7 @@ impl App {
             monitors: self
                 .monitors
                 .iter()
+                .filter(|e| !matches_auto(e, self.auto_plan.iter().find(|p| p.name == e.connector_hint)))
                 .map(|e| MonitorOverride {
                     edid_id: e.edid_id.clone(),
                     connector_hint: e.connector_hint.clone(),
@@ -93,6 +102,19 @@ impl App {
                 .collect(),
         }
     }
+}
+
+/// True iff the editable monitor's user-tunable fields all match the auto
+/// plan's values for that monitor. Used by `to_config` to suppress overrides
+/// that wouldn't change anything — keeps `monitors.json` minimal and lets
+/// "Reset to auto" actually round-trip back to an empty config.
+fn matches_auto(e: &EditableMonitor, auto: Option<&MonitorConfig>) -> bool {
+    let Some(auto) = auto else { return false };
+    e.chosen_mode == auto.mode
+        && (e.scale - auto.scale).abs() < 1e-9
+        && e.position == auto.position
+        && e.rotation == auto.rotation
+        && e.disabled == auto.disabled
 }
 
 fn reload_monitors() -> anyhow::Result<(Vec<hyprmonitor::model::Monitor>, hyprmonitor::config::Config)> {
