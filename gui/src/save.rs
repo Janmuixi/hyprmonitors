@@ -2,7 +2,6 @@ use crate::app::{App, EditableMonitor};
 use anyhow::{anyhow, Result};
 use hyprmonitor::config;
 use hyprmonitor::model::MonitorConfig;
-use std::path::PathBuf;
 
 pub fn validate(monitors: &[EditableMonitor]) -> Result<()> {
     for m in monitors {
@@ -61,19 +60,11 @@ pub fn validate(monitors: &[EditableMonitor]) -> Result<()> {
     Ok(())
 }
 
-pub fn config_path() -> PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        PathBuf::from(home).join(".config").join("hyprmonitor").join("monitors.json")
-    } else {
-        PathBuf::from(".config/hyprmonitor/monitors.json")
-    }
-}
-
 pub fn save_and_apply(app: &mut App) -> Result<()> {
     crate::canvas::align_all(&mut app.monitors);
     validate(&app.monitors)?;
     let cfg = app.to_config();
-    let path = config_path();
+    let path = config::default_path();
     config::write_atomic(&path, &cfg)?;
 
     // Apply via `hyprctl --batch` so all monitor changes land in a single

@@ -83,7 +83,7 @@ async fn reconfigure() {
         }
     };
     let mut plan = hyprmonitor::algo::plan(&monitors);
-    let cfg = hyprmonitor::config::load_or_default(&config_path());
+    let cfg = hyprmonitor::config::load_or_default(&hyprmonitor::config::default_path());
     hyprmonitor::config::merge_into_plan(&mut plan, &monitors, &cfg);
     info!("applying {} monitor configs (batched)", plan.len());
     if let Err(e) = crate::hypr::apply_batch(&plan).await {
@@ -129,13 +129,3 @@ fn mode_matches(actual: &Monitor, cfg: &MonitorConfig) -> bool {
     actual.width_px == cfg.mode.width && actual.height_px == cfg.mode.height
 }
 
-fn config_path() -> std::path::PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        std::path::PathBuf::from(home)
-            .join(".config")
-            .join("hyprmonitor")
-            .join("monitors.json")
-    } else {
-        std::path::PathBuf::from(".config/hyprmonitor/monitors.json")
-    }
-}

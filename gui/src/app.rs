@@ -97,7 +97,7 @@ impl App {
 
 fn reload_monitors() -> anyhow::Result<(Vec<hyprmonitor::model::Monitor>, hyprmonitor::config::Config)> {
     let monitors = crate::query_hyprctl_monitors_sync()?;
-    let cfg = hyprmonitor::config::load_or_default(&crate::save::config_path());
+    let cfg = hyprmonitor::config::load_or_default(&hyprmonitor::config::default_path());
     Ok((monitors, cfg))
 }
 

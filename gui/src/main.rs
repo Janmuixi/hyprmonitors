@@ -19,7 +19,7 @@ fn main() -> Result<()> {
         .init();
 
     let monitors = query_hyprctl_monitors_sync()?;
-    let cfg = config::load_or_default(&config_path());
+    let cfg = config::load_or_default(&config::default_path());
 
     let mut app = App::new();
     app.load(&monitors, &cfg);
@@ -120,13 +120,3 @@ fn read_edid_for_connector(connector: &str) -> Option<Vec<u8>> {
     None
 }
 
-fn config_path() -> std::path::PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        std::path::PathBuf::from(home)
-            .join(".config")
-            .join("hyprmonitor")
-            .join("monitors.json")
-    } else {
-        std::path::PathBuf::from(".config/hyprmonitor/monitors.json")
-    }
-}

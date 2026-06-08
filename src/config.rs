@@ -32,6 +32,19 @@ pub struct Position {
 
 pub const CURRENT_VERSION: u32 = 1;
 
+/// Standard on-disk location: `$HOME/.config/hyprmonitor/monitors.json`,
+/// or the same path under the current directory if `$HOME` is unset.
+pub fn default_path() -> std::path::PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        std::path::PathBuf::from(home)
+            .join(".config")
+            .join("hyprmonitor")
+            .join("monitors.json")
+    } else {
+        std::path::PathBuf::from(".config/hyprmonitor/monitors.json")
+    }
+}
+
 /// Load the config from a path. Returns an empty Config on missing file,
 /// malformed JSON (with a warn log), or an unrecognized version.
 pub fn load_or_default(path: &Path) -> Config {
