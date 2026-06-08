@@ -5,6 +5,26 @@ Auto-configures Hyprland monitors when displays are plugged in or out, with an o
 - **`hyprmonitor`** — daemon + CLI that picks a sensible mode, scale, and position for every connected monitor and re-applies on hotplug.
 - **`hyprmonitor-gui`** — visual editor (egui) for overriding the auto-plan: drag monitors around, change mode / refresh / scale / rotation, save to JSON.
 
+## Install on Arch Linux
+
+From the AUR — tracks the latest commit on `main`:
+
+```sh
+# with an AUR helper (recommended)
+yay -S hyprmonitor-git
+# or
+paru -S hyprmonitor-git
+
+# without a helper
+git clone https://aur.archlinux.org/hyprmonitor-git.git
+cd hyprmonitor-git
+makepkg -si
+```
+
+The package installs both `hyprmonitor` and `hyprmonitor-gui` to `/usr/bin/`, pulls in `hyprland`, `libnotify`, and the Wayland runtime libs as dependencies, and rebuilds from the latest `main` whenever you reinstall.
+
+For other distros, or to build from source on Arch, see **Build** below.
+
 ## Build
 
 ```sh
