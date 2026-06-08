@@ -16,29 +16,30 @@ struct HyprctlMonitor {
     available_modes: Vec<String>,
 }
 
-/// Read all currently-connected monitors from Hyprland, enriched with
-/// EDID-derived physical dimensions.
+/// Read all known monitors from Hyprland (including disabled ones), enriched
+/// with EDID-derived physical dimensions.
 ///
-/// Uses `hyprctl monitors -j` so we get the full `availableModes` list that
-/// the `hyprland` crate v0.4.0-beta.3 does not expose.
+/// Uses `hyprctl monitors all -j`: `all` keeps disabled outputs in the list,
+/// which is what lets the GUI re-enable them and the daemon re-apply their
+/// disabled state across reconfigures.
 pub async fn query_monitors() -> Result<Vec<Monitor>> {
     let output = Command::new("hyprctl")
-        .args(["monitors", "-j"])
+        .args(["monitors", "all", "-j"])
         .output()
         .await
-        .context("hyprctl monitors -j")?;
+        .context("hyprctl monitors all -j")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!(
-            "hyprctl monitors -j exited with {}: {}",
+            "hyprctl monitors all -j exited with {}: {}",
             output.status,
             stderr.trim()
         );
     }
 
     let raw: Vec<HyprctlMonitor> = serde_json::from_slice(&output.stdout)
-        .context("hyprctl monitors -j")?;
+        .context("hyprctl monitors all -j")?;
 
     let mut monitors = Vec::new();
     for hm in raw {

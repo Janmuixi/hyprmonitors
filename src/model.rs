@@ -23,10 +23,14 @@ pub struct MonitorConfig {
     pub position: (i32, i32),
     pub scale: f64,
     pub rotation: u16,
+    pub disabled: bool,
 }
 
 impl std::fmt::Display for MonitorConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.disabled {
+            return write!(f, "{},disable", self.name);
+        }
         let hz = format_hz(self.mode.refresh_hz);
         let scale = format_scale(self.scale);
         write!(
@@ -78,6 +82,7 @@ mod tests {
             position: (0, 0),
             scale: 1.0,
             rotation: 0,
+            disabled: false,
         };
         assert_eq!(cfg.to_string(), "DP-1,2560x1440@165,0x0,1");
     }
@@ -90,6 +95,7 @@ mod tests {
             position: (2560, 0),
             scale: 1.25,
             rotation: 0,
+            disabled: false,
         };
         assert_eq!(cfg.to_string(), "eDP-1,1920x1080@59.951,2560x0,1.25");
     }
@@ -102,7 +108,21 @@ mod tests {
             position: (1920, 0),
             scale: 1.0,
             rotation: 90,
+            disabled: false,
         };
         assert_eq!(cfg.to_string(), "DP-2,1920x1080@60,1920x0,1,transform,1");
+    }
+
+    #[test]
+    fn monitor_config_disabled_emits_disable_keyword() {
+        let cfg = MonitorConfig {
+            name: "HDMI-A-1".to_string(),
+            mode: Mode { width: 1920, height: 1080, refresh_hz: 60.0 },
+            position: (1000, 200),
+            scale: 1.5,
+            rotation: 90,
+            disabled: true,
+        };
+        assert_eq!(cfg.to_string(), "HDMI-A-1,disable");
     }
 }

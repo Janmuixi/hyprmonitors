@@ -59,6 +59,7 @@ pub fn plan(monitors: &[Monitor]) -> Vec<MonitorConfig> {
             position,
             scale,
             rotation: 0,
+            disabled: false,
         })
         .collect()
 }

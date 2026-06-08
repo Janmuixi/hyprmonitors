@@ -99,50 +99,36 @@ pub fn write_atomic(path: &Path, cfg: &Config) -> std::io::Result<()> {
 
 /// Merge user overrides into the auto-generated plan. For each entry in `plan`:
 /// - Look up a matching `MonitorOverride` by `edid_id` first, then by
-///   `connector_hint`. The match also requires the chosen override to be
-///   parseable into a `Mode`.
-/// - If matched: replace mode/scale/position with the override's values.
-///   `disabled: true` removes the entry from the plan.
+///   `connector_hint`.
+/// - If matched: replace mode/scale/position/rotation with the override's
+///   values and copy `disabled` through. A disabled entry stays in the plan
+///   so `apply_batch` can send `NAME,disable` to Hyprland.
 /// - If not matched: leave the entry as-is.
-///
-/// Each plan entry carries an `edid_id` and `connector_hint` from the
-/// originating Monitor — these are looked up via the `Monitor` slice passed
-/// in alongside the plan (zip-aligned by index).
 pub fn merge_into_plan(
     plan: &mut Vec<MonitorConfig>,
     monitors: &[crate::model::Monitor],
     cfg: &Config,
 ) {
-    let mut i = 0;
-    while i < plan.len() {
-        let entry_name = &plan[i].name;
-        // Find the matching Monitor (zipped by name, which matches by construction
-        // because algo::plan preserves names).
-        let monitor = monitors.iter().find(|m| &m.name == entry_name);
+    for entry in plan.iter_mut() {
+        let monitor = monitors.iter().find(|m| m.name == entry.name);
 
         let override_entry = cfg.monitors.iter().find(|o| {
-            // Prefer edid_id match.
             match (monitor.and_then(|m| m.edid_id.as_deref()), o.edid_id.as_deref()) {
                 (Some(mid), Some(oid)) if mid == oid => return true,
                 _ => {}
             }
-            // Fall back to connector_hint.
-            o.connector_hint == *entry_name
+            o.connector_hint == entry.name
         });
 
         if let Some(o) = override_entry {
-            if o.disabled {
-                plan.remove(i);
-                continue;
-            }
+            entry.disabled = o.disabled;
             if let Some(mode) = parse_mode_string(&o.mode) {
-                plan[i].mode = mode;
+                entry.mode = mode;
             }
-            plan[i].position = (o.position.x, o.position.y);
-            plan[i].scale = o.scale;
-            plan[i].rotation = o.rotation;
+            entry.position = (o.position.x, o.position.y);
+            entry.scale = o.scale;
+            entry.rotation = o.rotation;
         }
-        i += 1;
     }
 }
 
@@ -289,6 +275,7 @@ mod tests {
             position: (0, 0),
             scale: 1.0,
             rotation: 0,
+            disabled: false,
         }
     }
 
@@ -320,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn merge_disabled_removes_entry() {
+    fn merge_disabled_marks_entry_keeps_it() {
         let monitors = vec![
             fake_mon("eDP-1", Some("LEN-1234-00000001")),
             fake_mon("HDMI-A-1", Some("GSM-1234-00000001")),
@@ -330,8 +317,10 @@ mod tests {
         disabled.disabled = true;
         let cfg = Config { version: 1, monitors: vec![disabled] };
         merge_into_plan(&mut plan, &monitors, &cfg);
-        assert_eq!(plan.len(), 1);
-        assert_eq!(plan[0].name, "eDP-1");
+        assert_eq!(plan.len(), 2, "disabled entries stay in plan for apply_batch");
+        assert!(!plan[0].disabled);
+        assert!(plan[1].disabled);
+        assert_eq!(plan[1].name, "HDMI-A-1");
     }
 
     #[test]

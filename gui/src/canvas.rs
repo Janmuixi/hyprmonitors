@@ -11,7 +11,9 @@ pub fn footprint(m: &EditableMonitor) -> (f32, f32) {
     }
 }
 
-/// Compute the AABB of all monitors in world coordinates.
+/// Compute the AABB of all monitors in world coordinates. Includes disabled
+/// monitors so they remain visible on the canvas and the user can click to
+/// re-enable them.
 pub fn world_bounds(monitors: &[EditableMonitor]) -> egui::Rect {
     if monitors.is_empty() {
         return egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1920.0, 1080.0));
@@ -21,9 +23,6 @@ pub fn world_bounds(monitors: &[EditableMonitor]) -> egui::Rect {
     let mut max_x = i32::MIN;
     let mut max_y = i32::MIN;
     for m in monitors {
-        if m.disabled {
-            continue;
-        }
         let (w, h) = footprint(m);
         let x1 = m.position.0 as f32 + w;
         let y1 = m.position.1 as f32 + h;
@@ -75,15 +74,14 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
     let mut drag_target: Option<(usize, egui::Vec2)> = None;
     let mut drag_stopped = false;
 
-    // First pass: snapshot the rectangles for interaction + drawing.
+    // First pass: snapshot the rectangles for interaction + drawing. Disabled
+    // monitors are kept in the snapshot — dimmed and not draggable, but still
+    // clickable so the inspector can re-enable them.
     let snapshot: Vec<(usize, egui::Rect, bool)> = app
         .monitors
         .iter()
         .enumerate()
-        .filter_map(|(i, m)| {
-            if m.disabled {
-                return None;
-            }
+        .map(|(i, m)| {
             let (w, h) = footprint(m);
             let top_left = to_screen(m.position.0 as f32, m.position.1 as f32, scale, bcenter);
             let bottom_right = to_screen(
@@ -94,17 +92,21 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
             );
             let rect = egui::Rect::from_two_pos(top_left, bottom_right);
             let internal = hyprmonitor::algo::primary::is_internal(&m.connector_hint);
-            Some((i, rect, internal))
+            (i, rect, internal)
         })
         .collect();
 
-    // Second pass: register interactions on each snapshot rect.
+    // Second pass: register interactions. Enabled monitors are click-and-drag;
+    // disabled monitors are click-only — dragging a disabled rectangle would
+    // be confusing since its position has no effect until it's re-enabled.
     for (i, rect, _internal) in &snapshot {
-        let response = ui.interact(
-            *rect,
-            ui.id().with(("monitor", *i)),
-            egui::Sense::click_and_drag(),
-        );
+        let m = &app.monitors[*i];
+        let sense = if m.disabled {
+            egui::Sense::click()
+        } else {
+            egui::Sense::click_and_drag()
+        };
+        let response = ui.interact(*rect, ui.id().with(("monitor", *i)), sense);
         if response.clicked() {
             click_target = Some(*i);
         }
@@ -121,33 +123,46 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
     for (i, rect, internal) in &snapshot {
         let m = &app.monitors[*i];
         let selected = app.selected == Some(*i);
-        let fill = if selected {
+        let fill = if m.disabled {
+            egui::Color32::from_rgb(35, 35, 40)
+        } else if selected {
             egui::Color32::from_rgb(60, 120, 200)
         } else {
             egui::Color32::from_rgb(70, 70, 80)
+        };
+        let stroke_color = if m.disabled {
+            egui::Color32::from_gray(100)
+        } else {
+            egui::Color32::WHITE
         };
         painter.rect_filled(*rect, 4.0, fill);
         painter.rect_stroke(
             *rect,
             4.0,
-            egui::Stroke::new(2.0, egui::Color32::WHITE),
+            egui::Stroke::new(2.0, stroke_color),
             egui::StrokeKind::Outside,
         );
         let label = format!(
-            "{}{}\n{}×{} @{}\nscale {}",
+            "{}{}{}\n{}×{} @{}\nscale {}",
             m.connector_hint,
             if *internal { " (laptop)" } else { "" },
+            if m.disabled { " — disabled" } else { "" },
             m.chosen_mode.width,
             m.chosen_mode.height,
             m.chosen_mode.refresh_hz.round() as u32,
             m.scale,
         );
+        let text_color = if m.disabled {
+            egui::Color32::from_gray(160)
+        } else {
+            egui::Color32::WHITE
+        };
         painter.text(
             rect.center(),
             egui::Align2::CENTER_CENTER,
             label,
             egui::TextStyle::Body.resolve(ui.style()),
-            egui::Color32::WHITE,
+            text_color,
         );
     }
 

@@ -40,10 +40,10 @@ fn main() -> Result<()> {
 
 pub(crate) fn query_hyprctl_monitors_sync() -> Result<Vec<hyprmonitor::model::Monitor>> {
     let output = std::process::Command::new("hyprctl")
-        .args(["monitors", "-j"])
+        .args(["monitors", "all", "-j"])
         .output()?;
     if !output.status.success() {
-        anyhow::bail!("hyprctl monitors -j: {}", String::from_utf8_lossy(&output.stderr));
+        anyhow::bail!("hyprctl monitors all -j: {}", String::from_utf8_lossy(&output.stderr));
     }
     parse_hyprctl_monitors(&output.stdout)
 }

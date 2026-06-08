@@ -68,12 +68,12 @@ pub fn save_and_apply(app: &mut App) -> Result<()> {
     config::write_atomic(&path, &cfg)?;
 
     // Apply via `hyprctl --batch` so all monitor changes land in a single
-    // Hyprland transaction. Per-monitor calls would briefly leave the layout
-    // in a transitional state where waybar/topbar can lose its anchor.
+    // Hyprland transaction. Disabled monitors are kept in the batch — their
+    // Display impl renders `NAME,disable`, which is how you turn a monitor
+    // off in Hyprland.
     let batch = app
         .monitors
         .iter()
-        .filter(|m| !m.disabled)
         .map(|m| {
             let cfg_entry = MonitorConfig {
                 name: m.connector_hint.clone(),
@@ -81,6 +81,7 @@ pub fn save_and_apply(app: &mut App) -> Result<()> {
                 position: m.position,
                 scale: m.scale,
                 rotation: m.rotation,
+                disabled: m.disabled,
             };
             format!("keyword monitor {}", cfg_entry)
         })
