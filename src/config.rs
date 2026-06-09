@@ -114,10 +114,16 @@ pub fn merge_into_plan(
 
         let override_entry = cfg.monitors.iter().find(|o| {
             match (monitor.and_then(|m| m.edid_id.as_deref()), o.edid_id.as_deref()) {
-                (Some(mid), Some(oid)) if mid == oid => return true,
-                _ => {}
+                // Both the connected monitor and the override carry an EDID id,
+                // so EDID is authoritative: match only on equality and never
+                // fall back to the connector. Otherwise a different monitor on
+                // the same port would wrongly inherit this override.
+                (Some(mid), Some(oid)) => mid == oid,
+                // Either side lacks an EDID id (couldn't be read, or the
+                // override is intentionally port-based): fall back to the
+                // connector name.
+                _ => o.connector_hint == entry.name,
             }
-            o.connector_hint == entry.name
         });
 
         if let Some(o) = override_entry {
@@ -321,6 +327,26 @@ mod tests {
         assert!(!plan[0].disabled);
         assert!(plan[1].disabled);
         assert_eq!(plan[1].name, "HDMI-A-1");
+    }
+
+    #[test]
+    fn merge_does_not_apply_edid_override_to_different_monitor_on_same_connector() {
+        // A config was saved for monitor GSM-7706 on HDMI-A-1. A *different*
+        // monitor is now plugged into HDMI-A-1, so its EDID does not match.
+        // The override must NOT be applied just because the connector name is
+        // the same — EDID is the authoritative identifier.
+        let monitors = vec![fake_mon("HDMI-A-1", Some("GSM-9999-00000002"))];
+        let mut plan = vec![fake_plan_entry("HDMI-A-1")];
+        let original = plan.clone();
+        let cfg = Config {
+            version: 1,
+            monitors: vec![fake_cfg("HDMI-A-1", Some("GSM-7706-0000FEFD"), "2560x1440@60")],
+        };
+        merge_into_plan(&mut plan, &monitors, &cfg);
+        assert_eq!(
+            plan, original,
+            "an override keyed to a specific EDID must not apply to a different monitor on the same port"
+        );
     }
 
     #[test]
