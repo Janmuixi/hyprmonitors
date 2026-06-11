@@ -22,6 +22,12 @@ pub struct App {
     /// every Save would freeze the current auto values into overrides and
     /// "Reset to auto" would only last until the next click.
     pub auto_plan: Vec<MonitorConfig>,
+    /// The config as last loaded from disk. Retained so `to_config` can carry
+    /// forward overrides for monitors that are NOT currently connected —
+    /// otherwise every Save would rewrite `monitors.json` with only the
+    /// plugged-in monitors and wipe the remembered (EDID-keyed) setups for the
+    /// rest.
+    pub loaded_config: Config,
     pub selected: Option<usize>,
     pub canvas_scale: f32,
     pub canvas_offset: egui::Vec2,
@@ -34,6 +40,7 @@ impl App {
         Self {
             monitors: Vec::new(),
             auto_plan: Vec::new(),
+            loaded_config: Config::default(),
             selected: None,
             canvas_scale: 0.05,
             canvas_offset: egui::Vec2::ZERO,
@@ -53,12 +60,10 @@ impl App {
             .iter()
             .filter_map(|m| {
                 let entry = merged.iter().find(|p| p.name == m.name)?;
-                let cfg_entry = cfg.monitors.iter().find(|o| {
-                    match (m.edid_id.as_deref(), o.edid_id.as_deref()) {
-                        (Some(mid), Some(oid)) if mid == oid => true,
-                        _ => o.connector_hint == m.name,
-                    }
-                });
+                let cfg_entry = cfg
+                    .monitors
+                    .iter()
+                    .find(|o| config::override_matches(o, m.edid_id.as_deref(), &m.name));
                 Some(EditableMonitor {
                     edid_id: m.edid_id.clone(),
                     connector_hint: m.name.clone(),
@@ -73,34 +78,50 @@ impl App {
             })
             .collect();
         self.auto_plan = auto_plan;
+        self.loaded_config = cfg.clone();
         self.selected = None;
         self.dirty = false;
         self.last_error = None;
     }
 
     pub fn to_config(&self) -> Config {
-        Config {
-            version: config::CURRENT_VERSION,
-            monitors: self
-                .monitors
-                .iter()
-                .filter(|e| !matches_auto(e, self.auto_plan.iter().find(|p| p.name == e.connector_hint)))
-                .map(|e| MonitorOverride {
-                    edid_id: e.edid_id.clone(),
-                    connector_hint: e.connector_hint.clone(),
-                    position: Position { x: e.position.0, y: e.position.1 },
-                    mode: format!(
-                        "{}x{}@{}",
-                        e.chosen_mode.width,
-                        e.chosen_mode.height,
-                        format_hz(e.chosen_mode.refresh_hz),
-                    ),
-                    scale: e.scale,
-                    rotation: e.rotation,
-                    disabled: e.disabled,
-                })
-                .collect(),
+        // Overrides for the monitors connected right now, minus any that match
+        // the auto plan (so "Reset to auto" round-trips to an empty entry).
+        let mut monitors: Vec<MonitorOverride> = self
+            .monitors
+            .iter()
+            .filter(|e| !matches_auto(e, self.auto_plan.iter().find(|p| p.name == e.connector_hint)))
+            .map(|e| MonitorOverride {
+                edid_id: e.edid_id.clone(),
+                connector_hint: e.connector_hint.clone(),
+                position: Position { x: e.position.0, y: e.position.1 },
+                mode: format!(
+                    "{}x{}@{}",
+                    e.chosen_mode.width,
+                    e.chosen_mode.height,
+                    format_hz(e.chosen_mode.refresh_hz),
+                ),
+                scale: e.scale,
+                rotation: e.rotation,
+                disabled: e.disabled,
+            })
+            .collect();
+
+        // Carry forward overrides from the loaded config that belong to
+        // monitors which are NOT currently connected. A connected monitor's
+        // entry is omitted here because its current (possibly reset-to-auto)
+        // state above is authoritative; only the absent ones get preserved, so
+        // unplugging a monitor and saving never wipes its remembered setup.
+        for o in &self.loaded_config.monitors {
+            let connected = self.monitors.iter().any(|e| {
+                config::override_matches(o, e.edid_id.as_deref(), &e.connector_hint)
+            });
+            if !connected {
+                monitors.push(o.clone());
+            }
         }
+
+        Config { version: config::CURRENT_VERSION, monitors }
     }
 }
 

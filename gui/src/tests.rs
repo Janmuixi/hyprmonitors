@@ -119,6 +119,119 @@ fn to_config_drops_override_after_user_reverts_to_auto_value() {
 }
 
 #[test]
+fn load_does_not_apply_edid_override_to_different_monitor_on_same_connector() {
+    // An override was saved for monitor AAA on HDMI-A-1 with rotation=90 and
+    // disabled=true. A *different* monitor (its own EDID) is now plugged into
+    // HDMI-A-1. EDID is authoritative, so none of the override — including
+    // rotation/disabled — must leak onto the new monitor. (merge_into_plan
+    // already guards mode/scale/position; this covers rotation/disabled too.)
+    let cfg = Config {
+        version: 1,
+        monitors: vec![MonitorOverride {
+            edid_id: Some("AAA-0001-00000001".to_string()),
+            connector_hint: "HDMI-A-1".to_string(),
+            position: Position { x: 0, y: 0 },
+            mode: "1920x1080@60".to_string(),
+            scale: 1.0,
+            rotation: 90,
+            disabled: true,
+        }],
+    };
+    let mut app = App::new();
+    // fake_monitor("HDMI-A-1") has EDID "FAKE-0001-HDMI-A-1" — different from AAA.
+    app.load(&[fake_monitor("HDMI-A-1")], &cfg);
+    assert_eq!(app.monitors.len(), 1);
+    assert_eq!(
+        app.monitors[0].rotation, 0,
+        "rotation from a different monitor's EDID override must not apply"
+    );
+    assert!(
+        !app.monitors[0].disabled,
+        "disabled from a different monitor's EDID override must not apply"
+    );
+}
+
+#[test]
+fn to_config_preserves_overrides_for_disconnected_monitors() {
+    // Two setups were previously saved to disk: DP-1 (currently connected) and
+    // an "office" 4K monitor on DP-9 (currently unplugged). Saving while only
+    // DP-1 is connected must NOT wipe the office monitor's remembered config —
+    // that EDID-keyed entry is the whole point of the file.
+    let cfg = Config {
+        version: 1,
+        monitors: vec![
+            MonitorOverride {
+                edid_id: Some("FAKE-0001-DP-1".to_string()),
+                connector_hint: "DP-1".to_string(),
+                position: Position { x: 0, y: 0 },
+                mode: "1280x720@60".to_string(),
+                scale: 1.0,
+                rotation: 0,
+                disabled: false,
+            },
+            MonitorOverride {
+                edid_id: Some("OFFICE-1234-00000001".to_string()),
+                connector_hint: "DP-9".to_string(),
+                position: Position { x: 1920, y: 0 },
+                mode: "3840x2160@60".to_string(),
+                scale: 2.0,
+                rotation: 0,
+                disabled: false,
+            },
+        ],
+    };
+    let mut app = App::new();
+    app.load(&[fake_monitor("DP-1")], &cfg);
+    // Tweak DP-1 so it still emits an override of its own.
+    app.monitors[0].position = (10, 20);
+    let emitted = app.to_config();
+
+    let office = emitted
+        .monitors
+        .iter()
+        .find(|m| m.edid_id.as_deref() == Some("OFFICE-1234-00000001"))
+        .expect("disconnected monitor's override must be preserved");
+    assert_eq!(office.mode, "3840x2160@60");
+    assert_eq!(office.position, Position { x: 1920, y: 0 });
+    assert_eq!(office.scale, 2.0);
+
+    let dp1 = emitted
+        .monitors
+        .iter()
+        .find(|m| m.connector_hint == "DP-1")
+        .expect("connected monitor's edited override must still be emitted");
+    assert_eq!(dp1.position, Position { x: 10, y: 20 });
+}
+
+#[test]
+fn to_config_does_not_preserve_stale_override_for_connected_monitor_reset_to_auto() {
+    // A connected monitor that the user reset to auto must have its override
+    // dropped — the preservation logic only applies to monitors that are NOT
+    // currently connected, so this must not resurrect the stale entry.
+    let cfg = Config {
+        version: 1,
+        monitors: vec![MonitorOverride {
+            edid_id: Some("FAKE-0001-DP-1".to_string()),
+            connector_hint: "DP-1".to_string(),
+            position: Position { x: 0, y: 0 },
+            mode: "1920x1080@144".to_string(),
+            scale: 1.75,
+            rotation: 0,
+            disabled: false,
+        }],
+    };
+    let mut app = App::new();
+    app.load(&[fake_monitor("DP-1")], &cfg);
+    app.monitors[0].scale = 1.0; // back to the auto value for this fake monitor
+    let emitted = app.to_config();
+    assert_eq!(
+        emitted.monitors.len(),
+        0,
+        "a connected monitor reset to auto must not keep a stale override"
+    );
+}
+
+#[test]
 fn save_validate_rejects_overlapping_enabled_monitors() {
     use crate::save::validate;
     let mut app = App::new();

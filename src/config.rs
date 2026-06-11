@@ -32,6 +32,18 @@ pub struct Position {
 
 pub const CURRENT_VERSION: u32 = 1;
 
+/// True if `o` is the override that a monitor identified by `edid`/`connector`
+/// would match. EDID is authoritative: when both the monitor and the override
+/// carry an EDID id, they must be equal and we never fall back to the
+/// connector (otherwise a different monitor on the same port would inherit the
+/// override). If either side lacks an EDID id, fall back to the connector name.
+pub fn override_matches(o: &MonitorOverride, edid: Option<&str>, connector: &str) -> bool {
+    match (edid, o.edid_id.as_deref()) {
+        (Some(mid), Some(oid)) => mid == oid,
+        _ => o.connector_hint == connector,
+    }
+}
+
 /// Standard on-disk location: `$HOME/.config/hyprmonitor/monitors.json`,
 /// or the same path under the current directory if `$HOME` is unset.
 pub fn default_path() -> std::path::PathBuf {
@@ -112,19 +124,11 @@ pub fn merge_into_plan(
     for entry in plan.iter_mut() {
         let monitor = monitors.iter().find(|m| m.name == entry.name);
 
-        let override_entry = cfg.monitors.iter().find(|o| {
-            match (monitor.and_then(|m| m.edid_id.as_deref()), o.edid_id.as_deref()) {
-                // Both the connected monitor and the override carry an EDID id,
-                // so EDID is authoritative: match only on equality and never
-                // fall back to the connector. Otherwise a different monitor on
-                // the same port would wrongly inherit this override.
-                (Some(mid), Some(oid)) => mid == oid,
-                // Either side lacks an EDID id (couldn't be read, or the
-                // override is intentionally port-based): fall back to the
-                // connector name.
-                _ => o.connector_hint == entry.name,
-            }
-        });
+        let monitor_edid = monitor.and_then(|m| m.edid_id.as_deref());
+        let override_entry = cfg
+            .monitors
+            .iter()
+            .find(|o| override_matches(o, monitor_edid, &entry.name));
 
         if let Some(o) = override_entry {
             entry.disabled = o.disabled;
