@@ -89,6 +89,12 @@ async fn reconfigure() {
     if let Err(e) = crate::hypr::apply_batch(&plan).await {
         error!("apply failed: {:?}", e);
         crate::notify::notify_failure(&format!("Failed to configure monitors: {}", e));
+    } else {
+        // A hotplug reconfigure tears down and recreates outputs just like a
+        // GUI save does, dropping the bar/wallpaper layer surfaces. Rebind any
+        // running clients. Runs on a blocking thread so the short kill/respawn
+        // shellouts don't stall the async reactor.
+        let _ = tokio::task::spawn_blocking(hyprmonitor::refresh::refresh_clients).await;
     }
     verify_applied(&plan).await;
 }

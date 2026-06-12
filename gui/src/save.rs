@@ -101,5 +101,11 @@ pub fn save_and_apply(app: &mut App) -> Result<()> {
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
+
+    // The reconfigure above may have torn down the wl_outputs that bars and
+    // wallpaper daemons draw onto, leaving the bar gone or the wallpaper on the
+    // wrong output. Nudge any running clients so they rebind — this is what
+    // makes a single Save stick instead of needing a second click.
+    hyprmonitor::refresh::refresh_clients();
     Ok(())
 }
