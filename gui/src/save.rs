@@ -66,6 +66,11 @@ pub fn save_and_apply(app: &mut App) -> Result<()> {
     let cfg = app.to_config();
     let path = config::default_path();
     config::write_atomic(&path, &cfg)?;
+    // Keep the in-memory baseline in sync with what's now on disk so a second
+    // Save in the same session preserves overrides for monitors that were
+    // unplugged between saves. Without this, `loaded_config` stays frozen at
+    // session-start state and `to_config` carries forward stale entries.
+    app.loaded_config = cfg;
 
     // Apply via `hyprctl --batch` so all monitor changes land in a single
     // Hyprland transaction. Disabled monitors are kept in the batch — their
