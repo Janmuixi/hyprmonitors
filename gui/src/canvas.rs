@@ -60,7 +60,8 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
     };
 
     let painter = ui.painter_at(canvas_rect);
-    painter.rect_filled(canvas_rect, 0.0, egui::Color32::from_gray(28));
+    painter.rect_filled(canvas_rect, 0.0, crate::theme::BG);
+    draw_dot_grid(&painter, canvas_rect);
 
     let bg_id = ui.id().with("bg");
     let bg_response = ui.interact(canvas_rect, bg_id, egui::Sense::click());
@@ -119,51 +120,11 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         }
     }
 
-    // Third pass: draw rectangles + labels.
+    // Third pass: draw the monitor cards + labels.
     for (i, rect, internal) in &snapshot {
         let m = &app.monitors[*i];
         let selected = app.selected == Some(*i);
-        let fill = if m.disabled {
-            egui::Color32::from_rgb(35, 35, 40)
-        } else if selected {
-            egui::Color32::from_rgb(60, 120, 200)
-        } else {
-            egui::Color32::from_rgb(70, 70, 80)
-        };
-        let stroke_color = if m.disabled {
-            egui::Color32::from_gray(100)
-        } else {
-            egui::Color32::WHITE
-        };
-        painter.rect_filled(*rect, 4.0, fill);
-        painter.rect_stroke(
-            *rect,
-            4.0,
-            egui::Stroke::new(2.0, stroke_color),
-            egui::StrokeKind::Outside,
-        );
-        let label = format!(
-            "{}{}{}\n{}×{} @{}\nscale {}",
-            m.connector_hint,
-            if *internal { " (laptop)" } else { "" },
-            if m.disabled { " — disabled" } else { "" },
-            m.chosen_mode.width,
-            m.chosen_mode.height,
-            m.chosen_mode.refresh_hz.round() as u32,
-            m.scale,
-        );
-        let text_color = if m.disabled {
-            egui::Color32::from_gray(160)
-        } else {
-            egui::Color32::WHITE
-        };
-        painter.text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            label,
-            egui::TextStyle::Body.resolve(ui.style()),
-            text_color,
-        );
+        draw_monitor_card(&painter, *rect, m, *internal, selected);
     }
 
     if let Some(i) = click_target {
@@ -183,6 +144,123 @@ pub fn render(ui: &mut egui::Ui, app: &mut App) {
         align_all(&mut app.monitors);
         app.dirty = true;
     }
+}
+
+const CARD_RADIUS: f32 = 8.0;
+
+/// A faint dot lattice behind the monitors, so the canvas reads as a workspace
+/// rather than an empty void.
+fn draw_dot_grid(painter: &egui::Painter, rect: egui::Rect) {
+    let step = 30.0;
+    let color = egui::Color32::from_rgba_unmultiplied(150, 153, 170, 16);
+    let mut y = rect.top() + step;
+    while y < rect.bottom() {
+        let mut x = rect.left() + step;
+        while x < rect.right() {
+            painter.circle_filled(egui::pos2(x, y), 1.0, color);
+            x += step;
+        }
+        y += step;
+    }
+}
+
+/// Draw one monitor as a rounded card: soft shadow, accent selection ring, a
+/// laptop/external badge dot, and a two-tier label (bold name, muted specs).
+fn draw_monitor_card(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    m: &EditableMonitor,
+    internal: bool,
+    selected: bool,
+) {
+    use crate::theme;
+
+    // Soft drop shadow — stacked, expanding, low-alpha rects fake a blur.
+    if !m.disabled {
+        for i in 1..=3 {
+            let e = i as f32 * 2.0;
+            painter.rect_filled(
+                rect.translate(egui::vec2(0.0, 3.0)).expand(e),
+                CARD_RADIUS + e,
+                egui::Color32::from_black_alpha(22),
+            );
+        }
+    }
+
+    let fill = if m.disabled {
+        theme::CARD_DISABLED
+    } else if selected {
+        theme::CARD_SELECTED
+    } else {
+        theme::CARD
+    };
+    painter.rect_filled(rect, CARD_RADIUS, fill);
+
+    // Selection glow: a wider, translucent accent ring behind the crisp one.
+    if selected {
+        painter.rect_stroke(
+            rect.expand(3.0),
+            CARD_RADIUS + 3.0,
+            egui::Stroke::new(2.0_f32, egui::Color32::from_rgba_unmultiplied(129, 140, 248, 70)),
+            egui::StrokeKind::Outside,
+        );
+    }
+    let (stroke_w, stroke_color): (f32, egui::Color32) = if selected {
+        (2.0, theme::ACCENT)
+    } else {
+        (1.0, theme::BORDER)
+    };
+    painter.rect_stroke(
+        rect,
+        CARD_RADIUS,
+        egui::Stroke::new(stroke_w, stroke_color),
+        egui::StrokeKind::Inside,
+    );
+
+    // Corner badge dot: teal = laptop/internal, indigo = external.
+    let badge = if m.disabled {
+        theme::TEXT_MUTED
+    } else if internal {
+        theme::OK
+    } else {
+        theme::ACCENT
+    };
+    painter.circle_filled(rect.left_top() + egui::vec2(13.0, 13.0), 4.0, badge);
+
+    // Skip labels on cards too small to hold them cleanly.
+    if rect.width() < 54.0 || rect.height() < 40.0 {
+        return;
+    }
+
+    let name_color = if m.disabled { theme::TEXT_MUTED } else { theme::TEXT };
+    let mut title = m.connector_hint.clone();
+    if internal {
+        title.push_str("  (laptop)");
+    }
+    if m.disabled {
+        title.push_str("  — off");
+    }
+    painter.text(
+        rect.center() - egui::vec2(0.0, 13.0),
+        egui::Align2::CENTER_CENTER,
+        title,
+        egui::FontId::proportional(15.0),
+        name_color,
+    );
+    let details = format!(
+        "{}×{}  ·  {} Hz\nscale {}",
+        m.chosen_mode.width,
+        m.chosen_mode.height,
+        m.chosen_mode.refresh_hz.round() as u32,
+        m.scale,
+    );
+    painter.text(
+        rect.center() + egui::vec2(0.0, 12.0),
+        egui::Align2::CENTER_CENTER,
+        details,
+        egui::FontId::proportional(11.5),
+        theme::TEXT_MUTED,
+    );
 }
 
 const SNAP_PX_DRAG: i32 = 20;

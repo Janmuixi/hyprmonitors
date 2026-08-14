@@ -144,6 +144,18 @@ fn reload_monitors() -> anyhow::Result<(Vec<hyprmonitor::model::Monitor>, hyprmo
     Ok((monitors, cfg))
 }
 
+/// A compact status chip: label tinted `color` on a dim, same-hue background.
+fn pill(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
+    egui::Frame::none()
+        .fill(color.gamma_multiply(0.16))
+        .stroke(egui::Stroke::new(1.0_f32, color.gamma_multiply(0.5)))
+        .corner_radius(egui::CornerRadius::same(8))
+        .inner_margin(egui::Margin::symmetric(9, 3))
+        .show(ui, |ui| {
+            ui.colored_label(color, text);
+        });
+}
+
 fn format_hz(hz: f64) -> String {
     if (hz - hz.round()).abs() < 1e-6 {
         format!("{}", hz as u32)
@@ -198,27 +210,37 @@ impl eframe::App for App {
             }
         }
         egui::Panel::top("toolbar").show_inside(ui, |ui| {
+            ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.heading("hyprmonitor");
-                ui.separator();
-                ui.label(format!(
-                    "{} monitors{}",
-                    self.monitors.len(),
-                    if self.dirty { " (unsaved)" } else { "" }
-                ));
+                ui.add_space(2.0);
+                ui.label(
+                    egui::RichText::new("hyprmonitor")
+                        .heading()
+                        .strong()
+                        .color(crate::theme::ACCENT),
+                );
+                ui.add_space(6.0);
+                ui.colored_label(
+                    crate::theme::TEXT_MUTED,
+                    format!("{} monitors", self.monitors.len()),
+                );
+                if self.dirty {
+                    pill(ui, "● Unsaved", crate::theme::WARN);
+                }
                 if let Some(reason) = &validation_error {
-                    ui.colored_label(egui::Color32::LIGHT_RED, format!("⚠ {}", reason));
+                    pill(ui, &format!("⚠ {}", reason), crate::theme::ERR);
                 }
                 if let Some(msg) = &self.last_error {
                     let color = if msg.contains('✓') {
-                        egui::Color32::LIGHT_GREEN
+                        crate::theme::OK
                     } else {
-                        egui::Color32::LIGHT_RED
+                        crate::theme::ERR
                     };
-                    ui.colored_label(color, msg);
+                    pill(ui, msg, color);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let save_button = egui::Button::new("\u{1f4be} Save & Apply");
+                    let save_button = egui::Button::new("\u{1f4be}  Save & Apply")
+                        .fill(crate::theme::ACCENT_DIM);
                     let save_resp = ui.add_enabled(validation_error.is_none(), save_button);
                     let save_resp = if let Some(reason) = &validation_error {
                         save_resp.on_hover_text(reason)
@@ -228,18 +250,21 @@ impl eframe::App for App {
                     if save_resp.clicked() {
                         save_requested = true;
                     }
-                    if ui.button("\u{27f2} Reset to auto").clicked() {
+                    if ui.button("\u{27f2}  Reset to auto").clicked() {
                         reset_requested = true;
                     }
-                    if ui.button("\u{21bb} Reload").clicked() {
+                    if ui.button("\u{21bb}  Reload").clicked() {
                         reload_requested = true;
                     }
                 });
             });
+            ui.add_space(4.0);
         });
-        egui::Panel::bottom("inspector")
-            .resizable(false)
-            .min_size(80.0)
+        egui::Panel::right("inspector")
+            .resizable(true)
+            .default_width(300.0)
+            .min_width(260.0)
+            .max_width(440.0)
             .show_inside(ui, |ui| {
                 crate::inspector::render(ui, self);
             });

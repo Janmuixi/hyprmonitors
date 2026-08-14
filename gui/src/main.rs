@@ -2,6 +2,7 @@ mod app;
 mod canvas;
 mod inspector;
 mod save;
+mod theme;
 #[cfg(test)]
 mod tests;
 
@@ -36,7 +37,10 @@ fn main() -> Result<()> {
     eframe::run_native(
         "hyprmonitor",
         options,
-        Box::new(|_cc| Ok(Box::new(app) as Box<dyn eframe::App>)),
+        Box::new(|cc| {
+            theme::apply(&cc.egui_ctx);
+            Ok(Box::new(app) as Box<dyn eframe::App>)
+        }),
     )
     .map_err(|e| anyhow::anyhow!("eframe: {}", e))?;
     Ok(())
