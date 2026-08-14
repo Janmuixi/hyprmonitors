@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Hyprmonitor
+GenericName=Monitor Layout Editor
+Comment=Drag-and-drop editor for Hyprland monitor layouts
+Exec=hyprmonitor-gui
+Icon=hyprmonitor
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=monitor;display;screen;hyprland;layout;resolution;scale;
+StartupWMClass=hyprmonitor
+StartupNotify=false

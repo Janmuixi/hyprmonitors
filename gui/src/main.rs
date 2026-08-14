@@ -25,7 +25,11 @@ fn main() -> Result<()> {
     app.load(&monitors, &cfg);
 
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([900.0, 600.0]),
+        // app_id must match the .desktop's StartupWMClass so the launcher and
+        // taskbars map the running window back to its icon/entry (Wayland).
+        viewport: egui::ViewportBuilder::default()
+            .with_app_id("hyprmonitor")
+            .with_inner_size([900.0, 600.0]),
         ..Default::default()
     };
 
