@@ -67,7 +67,7 @@ exec-once = /path/to/hyprmonitor daemon
 
 ## GUI
 
-![hyprmonitor-gui showing three monitors with the middle one selected](screenshot.png)
+![hyprmonitor-gui showing two monitors with the external one selected](screenshot.png)
 
 Open the editor:
 
@@ -80,7 +80,7 @@ hyprmonitor-gui
 Each monitor is a draggable rectangle sized to its **logical footprint** (`mode.width / scale`). Internal panels (eDP/LVDS/DSI) are labelled `(laptop)`.
 
 - **Drag** any rectangle to move it. Drops snap to neighbouring edges within 20px; on release a wider 200px alignment pass closes any small gap so the cursor can cross between monitors. Hyprland only allows cursor travel across exactly-adjacent regions.
-- **Click** a monitor to select it (highlighted blue). The inspector at the bottom lets you change resolution / refresh / scale / position / rotation / disabled state.
+- **Click** a monitor to select it (highlighted with an accent ring). The inspector on the right lets you change resolution / refresh / scale / position / rotation / disabled state.
 - **Arrow keys** with a monitor selected nudge by 1 logical px. **Esc** deselects.
 - **Save & Apply** (or **Ctrl+S**) validates the layout, writes `~/.config/hyprmonitor/monitors.json`, and runs `hyprctl keyword monitor …` for each enabled monitor. The button greys out and shows `⚠ <reason>` if monitors overlap or a mode isn't supported.
 - **Reload** re-queries Hyprland (use after a hotplug while the GUI is open). **Reset to auto** discards overrides and shows the daemon's automatic plan (still requires Save to persist).
