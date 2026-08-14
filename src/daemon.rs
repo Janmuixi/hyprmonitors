@@ -85,6 +85,12 @@ async fn reconfigure() {
     let mut plan = hyprmonitor::algo::plan(&monitors);
     let cfg = hyprmonitor::config::load_or_default(&hyprmonitor::config::default_path());
     hyprmonitor::config::merge_into_plan(&mut plan, &monitors, &cfg);
+    // Saved positions are absolute coords captured for one particular monitor
+    // combination. When a different set is connected (e.g. a different monitor
+    // on a shared port, at home vs. the office), those coords no longer chain
+    // up and adjacent monitors drift apart. Re-glue them here so a single saved
+    // layout stays gapless across every combination, without re-editing.
+    hyprmonitor::algo::layout::close_gaps(&mut plan, hyprmonitor::algo::layout::SNAP_PX_ALIGN);
     info!("applying {} monitor configs (batched)", plan.len());
     if let Err(e) = crate::hypr::apply_batch(&plan).await {
         error!("apply failed: {:?}", e);

@@ -48,6 +48,7 @@ async fn list() -> Result<()> {
     let mut plan = hyprmonitor::algo::plan(&monitors);
     let cfg = hyprmonitor::config::load_or_default(&hyprmonitor::config::default_path());
     hyprmonitor::config::merge_into_plan(&mut plan, &monitors, &cfg);
+    hyprmonitor::algo::layout::close_gaps(&mut plan, hyprmonitor::algo::layout::SNAP_PX_ALIGN);
 
     println!("Detected monitors:");
     for m in &monitors {
@@ -73,6 +74,10 @@ async fn apply(dry_run: bool) -> Result<()> {
     let mut plan = hyprmonitor::algo::plan(&monitors);
     let cfg = hyprmonitor::config::load_or_default(&hyprmonitor::config::default_path());
     hyprmonitor::config::merge_into_plan(&mut plan, &monitors, &cfg);
+    // Re-glue the saved absolute layout for whatever set is connected now; see
+    // the daemon's reconfigure for why. Runs before dry-run too, so the printed
+    // commands match exactly what a real apply would send.
+    hyprmonitor::algo::layout::close_gaps(&mut plan, hyprmonitor::algo::layout::SNAP_PX_ALIGN);
 
     if dry_run {
         for cfg in &plan {
