@@ -105,39 +105,33 @@ fn read_edid_for_connector(connector: &str) -> Option<Vec<u8>> {
     None
 }
 
-/// Apply a single monitor configuration via `hyprctl keyword monitor`.
+/// Apply a single monitor configuration.
 pub async fn apply(cfg: &MonitorConfig) -> Result<()> {
-    let arg = cfg.to_string();
-    hyprland::keyword::Keyword::set_async("monitor", arg.clone())
-        .await
-        .with_context(|| format!("hyprctl keyword monitor {}", arg))?;
-    Ok(())
+    apply_batch(std::slice::from_ref(cfg)).await
 }
 
-/// Apply all monitor configurations in a single `hyprctl --batch` so
-/// Hyprland reconfigures everything atomically (no transient half-applied
-/// layout that drops topbars or splits the screen).
+/// Apply all monitor configurations in a single `hyprctl` call so Hyprland
+/// reconfigures everything atomically (no transient half-applied layout that
+/// drops topbars or splits the screen). The exact form — `--batch keyword` or
+/// `eval` — depends on which config parser this session runs; see
+/// `hyprmonitor::hyprctl`.
 pub async fn apply_batch(configs: &[MonitorConfig]) -> Result<()> {
-    if configs.is_empty() {
+    let Some(args) = hyprmonitor::hyprctl::batch_args(configs) else {
         return Ok(());
-    }
-    let batch = configs
-        .iter()
-        .map(|c| format!("keyword monitor {}", c))
-        .collect::<Vec<_>>()
-        .join(" ; ");
+    };
     let output = tokio::process::Command::new("hyprctl")
-        .args(["--batch", &batch])
+        .args(&args)
         .output()
         .await
-        .context("hyprctl --batch")?;
+        .context("hyprctl")?;
     if !output.status.success() {
         anyhow::bail!(
-            "hyprctl --batch exited with {}: {}",
+            "hyprctl exited with {}: {}",
             output.status,
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }
+    hyprmonitor::hyprctl::check_output(&args, &String::from_utf8_lossy(&output.stdout))?;
     Ok(())
 }
 

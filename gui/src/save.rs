@@ -72,40 +72,31 @@ pub fn save_and_apply(app: &mut App) -> Result<()> {
     // session-start state and `to_config` carries forward stale entries.
     app.loaded_config = cfg;
 
-    // Apply via `hyprctl --batch` so all monitor changes land in a single
-    // Hyprland transaction. Disabled monitors are kept in the batch — their
-    // Display impl renders `NAME,disable`, which is how you turn a monitor
-    // off in Hyprland.
-    let batch = app
+    // Apply in a single `hyprctl` call so all monitor changes land in one
+    // Hyprland transaction. Disabled monitors are kept in it — they render as
+    // `NAME,disable` / `disabled = true`, which is how you turn a monitor off.
+    let configs = app
         .monitors
         .iter()
-        .map(|m| {
-            let cfg_entry = MonitorConfig {
-                name: m.connector_hint.clone(),
-                mode: m.chosen_mode.clone(),
-                position: m.position,
-                scale: m.scale,
-                rotation: m.rotation,
-                disabled: m.disabled,
-            };
-            format!("keyword monitor {}", cfg_entry)
+        .map(|m| MonitorConfig {
+            name: m.connector_hint.clone(),
+            mode: m.chosen_mode.clone(),
+            position: m.position,
+            scale: m.scale,
+            rotation: m.rotation,
+            disabled: m.disabled,
         })
-        .collect::<Vec<_>>()
-        .join(" ; ");
+        .collect::<Vec<_>>();
 
-    if batch.is_empty() {
+    let Some(args) = hyprmonitor::hyprctl::batch_args(&configs) else {
         return Ok(());
-    }
+    };
 
-    let output = std::process::Command::new("hyprctl")
-        .args(["--batch", &batch])
-        .output()?;
+    let output = std::process::Command::new("hyprctl").args(&args).output()?;
     if !output.status.success() {
-        return Err(anyhow!(
-            "hyprctl --batch: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
+        return Err(anyhow!("hyprctl: {}", String::from_utf8_lossy(&output.stderr).trim()));
     }
+    hyprmonitor::hyprctl::check_output(&args, &String::from_utf8_lossy(&output.stdout))?;
 
     // The reconfigure above may have torn down the wl_outputs that bars and
     // wallpaper daemons draw onto, leaving the bar gone or the wallpaper on the
