@@ -54,15 +54,25 @@ hyprmonitor list              # show detected monitors and the plan
 hyprmonitor apply             # apply the plan once
 hyprmonitor apply --dry-run   # print the hyprctl commands instead of running them
 hyprmonitor daemon            # run as a daemon, reacting to hotplug events
+hyprmonitor setup-autostart   # add the daemon to your Hyprland config
 hyprmonitor -v <cmd>          # debug logs
 ```
 
 ### Auto-start with Hyprland
 
-Add to `~/.config/hypr/hyprland.conf`:
+**Required** — the daemon only applies your layout while it runs:
 
+```sh
+hyprmonitor setup-autostart
 ```
-exec-once = /path/to/hyprmonitor daemon
+
+It appends the right line to your config, in Lua or legacy `.conf` depending on which you use, and does nothing if you are already set up. Writing it by hand works too — just mind that Hyprland picks `hyprland.lua` over `hyprland.conf` and ignores the other without complaint:
+
+```lua
+hl.on("hyprland.start", function() hl.exec_cmd("hyprmonitor daemon") end)  -- hyprland.lua
+```
+```
+exec-once = hyprmonitor daemon                                            # hyprland.conf
 ```
 
 ## GUI
