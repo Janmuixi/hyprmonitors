@@ -22,6 +22,9 @@ pub enum Command {
     },
     /// Print detected monitors and the plan without applying.
     List,
+    /// Add the daemon to your Hyprland autostart, in the right syntax for
+    /// your config (`hyprland.lua` or `hyprland.conf`).
+    SetupAutostart,
 }
 
 pub async fn run(cli: Cli) -> Result<()> {
@@ -30,6 +33,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Daemon => crate::daemon::run().await,
         Command::Apply { dry_run } => apply(dry_run).await,
         Command::List => list().await,
+        Command::SetupAutostart => setup_autostart(),
     }
 }
 
@@ -65,6 +69,17 @@ async fn list() -> Result<()> {
     println!("Plan:");
     for cfg in &plan {
         println!("  monitor = {}", cfg);
+    }
+    Ok(())
+}
+
+fn setup_autostart() -> Result<()> {
+    let dir = hyprmonitor::autostart::config_dir()?;
+    let (file, added) = hyprmonitor::autostart::setup(&dir)?;
+    if added {
+        println!("Added hyprmonitor to {}. Relaunch Hyprland to pick it up.", file.display());
+    } else {
+        println!("Already set up: {} launches hyprmonitor.", file.display());
     }
     Ok(())
 }
