@@ -80,8 +80,8 @@ async fn apply(dry_run: bool) -> Result<()> {
     hyprmonitor::algo::layout::close_gaps(&mut plan, hyprmonitor::algo::layout::SNAP_PX_ALIGN);
 
     if dry_run {
-        for cfg in &plan {
-            println!("hyprctl keyword monitor {}", cfg);
+        for line in hyprmonitor::hyprctl::dry_run_lines(&plan) {
+            println!("{}", line);
         }
         return Ok(());
     }

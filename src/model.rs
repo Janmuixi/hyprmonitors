@@ -52,6 +52,38 @@ impl std::fmt::Display for MonitorConfig {
     }
 }
 
+impl MonitorConfig {
+    /// Render this config as a `hl.monitor { ... }` call for Hyprland's Lua
+    /// parser. Hyprland 0.56+ refuses `hyprctl keyword` when the session was
+    /// started from a `.lua` config ("keyword can't work with non-legacy
+    /// parsers. Use eval."), so applying has to go through `hyprctl eval`.
+    pub fn to_lua(&self) -> String {
+        if self.disabled {
+            return format!("hl.monitor({{ output = {}, disabled = true }})", lua_str(&self.name));
+        }
+        let mut s = format!(
+            "hl.monitor({{ output = {}, mode = \"{}x{}@{}\", position = \"{}x{}\", scale = {}",
+            lua_str(&self.name),
+            self.mode.width,
+            self.mode.height,
+            format_hz(self.mode.refresh_hz),
+            self.position.0,
+            self.position.1,
+            format_scale(self.scale)
+        );
+        if self.rotation != 0 {
+            s.push_str(&format!(", transform = {}", (self.rotation / 90) % 4));
+        }
+        s.push_str(" })");
+        s
+    }
+}
+
+/// Quote a connector name as a Lua string literal.
+fn lua_str(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 fn format_hz(hz: f64) -> String {
     if (hz - hz.round()).abs() < 1e-6 {
         format!("{}", hz as u32)
@@ -124,5 +156,50 @@ mod tests {
             disabled: true,
         };
         assert_eq!(cfg.to_string(), "HDMI-A-1,disable");
+    }
+
+    #[test]
+    fn monitor_config_formats_as_lua_call() {
+        let cfg = MonitorConfig {
+            name: "eDP-1".into(),
+            mode: Mode { width: 2880, height: 1800, refresh_hz: 120.0 },
+            position: (-149, 180),
+            scale: 2.0,
+            rotation: 0,
+            disabled: false,
+        };
+        assert_eq!(
+            cfg.to_lua(),
+            r#"hl.monitor({ output = "eDP-1", mode = "2880x1800@120", position = "-149x180", scale = 2 })"#
+        );
+    }
+
+    #[test]
+    fn monitor_config_lua_includes_transform() {
+        let cfg = MonitorConfig {
+            name: "DP-2".into(),
+            mode: Mode { width: 1920, height: 1080, refresh_hz: 59.951 },
+            position: (0, 0),
+            scale: 1.0,
+            rotation: 90,
+            disabled: false,
+        };
+        assert_eq!(
+            cfg.to_lua(),
+            r#"hl.monitor({ output = "DP-2", mode = "1920x1080@59.951", position = "0x0", scale = 1, transform = 1 })"#
+        );
+    }
+
+    #[test]
+    fn monitor_config_lua_disables() {
+        let cfg = MonitorConfig {
+            name: "HDMI-A-1".into(),
+            mode: Mode { width: 1920, height: 1080, refresh_hz: 60.0 },
+            position: (0, 0),
+            scale: 1.0,
+            rotation: 0,
+            disabled: true,
+        };
+        assert_eq!(cfg.to_lua(), r#"hl.monitor({ output = "HDMI-A-1", disabled = true })"#);
     }
 }
